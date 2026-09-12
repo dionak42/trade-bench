@@ -127,15 +127,226 @@ const HELP = {
     </dl>`,
 };
 
+// ============ Course: Income with Covered Calls & Cash-Secured Puts ============
+// A short, hands-on course taught through the app. Education, not financial advice.
+const COURSE = [
+  {
+    nav: 'Why sell options?',
+    html: `
+      <h3>Lesson 1 — Why sell options?</h3>
+      <p>Most people <em>buy</em> options hoping for a big win, and most of the time those options
+      expire worthless. This course is about the other side of that trade: <strong>selling</strong>
+      options to collect income. When you sell, you're the "house" — you take in cash up front, and
+      time is on your side.</p>
+      <p>You'll learn the two safest, most popular income strategies:</p>
+      <ul>
+        <li><strong>Covered calls</strong> — earn income on shares you already own.</li>
+        <li><strong>Cash-secured puts</strong> — get paid to (maybe) buy a stock you want at a lower price.</li>
+      </ul>
+      <p>Both are "conservative" as options go: no unlimited-loss risk, and every outcome is one you
+      agreed to in advance. The trade-off is that you cap some upside (calls) or take on an obligation
+      to buy (puts) in exchange for cash today.</p>
+      <div class="tip">🎯 <strong>Goal of this course:</strong> by the end, you'll be able to load a
+      ticker in this app, pick a sensible strike, read the return, weigh the risks, and know exactly
+      what happens either way. Take it one lesson at a time.</div>
+      <p style="font-size:12.5px;color:var(--muted)">This is educational material, not personalized
+      financial advice. Consider paper-trading first, and never risk money you can't afford to lose.</p>`,
+  },
+  {
+    nav: 'The words you need',
+    html: `
+      <h3>Lesson 2 — The handful of words you actually need</h3>
+      <p>Options have a lot of jargon, but you only need a few terms to start. Here they are, mapped
+      to where they show up in the app:</p>
+      <dl>
+        <dt>Call / Put</dt><dd>A <strong>call</strong> is the right to <em>buy</em> a stock at a set
+        price; a <strong>put</strong> is the right to <em>sell</em> it. You'll be <em>selling</em> both.</dd>
+        <dt>Strike</dt><dd>The agreed price. It's the first column in the chain.</dd>
+        <dt>Premium</dt><dd>The cash you collect for selling — the <strong>Bid</strong> column
+        (per share; ×100 per contract).</dd>
+        <dt>Contract</dt><dd>One option = <strong>100 shares</strong>. Always.</dd>
+        <dt>Expiration / DTE</dt><dd>When it ends. <strong>DTE</strong> = days to expiration.</dd>
+        <dt>In / Out of the money</dt><dd>Whether the option has value now. (See the Glossary tab.)</dd>
+        <dt>Assignment</dt><dd>When the option is exercised against you — your shares get sold (call)
+        or you buy shares (put).</dd>
+        <dt>Delta ≈ Probability</dt><dd>The <strong>Δ / Prob</strong> column. Roughly the chance of
+        assignment. This is your main dial — you'll use it constantly.</dd>
+      </dl>
+      <div class="tip">💡 Don't memorize these. They'll stick naturally as you use the app. Every
+      column and field also has a hover explanation.</div>`,
+  },
+  {
+    nav: 'Reading the chain',
+    html: `
+      <h3>Lesson 3 — Reading the options chain</h3>
+      <p>The chain is the menu of options you can sell. Each row is one contract. Here's how to read
+      it left to right: <strong>Strike</strong> (the price), <strong>Bid</strong> (your premium),
+      <strong>Δ / Prob</strong> (odds of assignment), <strong>IV</strong> (expected movement),
+      <strong>Spread</strong> (how easy it is to trade), <strong>DTE</strong> (days left).</p>
+      <p>Two visual guides do a lot of work for you:</p>
+      <ul>
+        <li>The <strong>● blue dot</strong> marks the strike closest to today's price — your anchor.</li>
+        <li>The <strong>★ green target zone</strong> shades the ~0.20–0.35 delta band and stars the
+        strike near 0.30 — a common income sweet spot (more on that in Lesson 6).</li>
+        <li>A <strong style="color:var(--bad)">red spread</strong> means the option is illiquid — skip it.</li>
+        <li>A <strong>⚠️</strong> means an earnings or dividend event lands before expiration.</li>
+      </ul>
+      <div class="do">✍️ <strong>Try it now:</strong> Close this window, type a ticker you know (like
+      <code>AAPL</code>), and just look at the chain. Find the blue dot. Notice how delta shrinks as
+      strikes move away from the price. Then come back — that intuition is most of the battle.</div>`,
+  },
+  {
+    nav: 'Covered calls',
+    html: `
+      <h3>Lesson 4 — Covered calls, step by step</h3>
+      <p><strong>What it is:</strong> you own at least 100 shares and sell a call against them. You
+      collect premium now. If the stock rises above your strike by expiration, your shares get sold
+      ("called away") at that strike — and you keep the premium either way.</p>
+      <p><strong>When to use it:</strong> you own a stock, feel neutral-to-slightly-bullish, and want
+      to squeeze income out of it. You should be genuinely okay selling at the strike.</p>
+      <p><strong>The app, step by step:</strong></p>
+      <ul>
+        <li>Pick the <strong>Covered Call</strong> tab and enter your real <strong>share count</strong>.</li>
+        <li>Click a call strike <em>above</em> today's price — try one in the green target zone.</li>
+        <li>Read the two returns: <strong>Static</strong> (if the stock stays flat, you keep premium)
+        and <strong>If-called</strong> (premium + gain up to the strike, if assigned).</li>
+        <li>Check <strong>Breakeven</strong> and <strong>Downside protection</strong> — your cushion
+        if the stock dips.</li>
+      </ul>
+      <div class="do">✍️ <strong>Worked example:</strong> You own 100 shares at $50. You sell a
+      $55 call, 30 days out, for $1.00. You collect <strong>$100</strong> now. If the stock stays
+      under $55, you keep it and can sell another next month. If it jumps to $60, your shares sell at
+      $55 (a $500 gain) and you still keep the $100 — you just miss the extra move above $55. Either
+      outcome pays you.</div>`,
+  },
+  {
+    nav: 'Cash-secured puts',
+    html: `
+      <h3>Lesson 5 — Cash-secured puts, step by step</h3>
+      <p><strong>What it is:</strong> you set aside cash and sell a put below today's price. You
+      collect premium now. If the stock falls to your strike, you buy the shares — at an effective
+      discount, because the premium lowers your cost.</p>
+      <p><strong>When to use it:</strong> there's a stock you'd happily own, but only cheaper. Instead
+      of waiting and hoping, you get <em>paid</em> to wait.</p>
+      <p><strong>The app, step by step:</strong></p>
+      <ul>
+        <li>Pick the <strong>Cash-Secured Put</strong> tab. The chain flips to puts.</li>
+        <li>Decide the price you'd be glad to buy at, and click that strike (below today's price).</li>
+        <li>Read <strong>Cash required</strong> (what you hold in reserve), <strong>Return on cash</strong>
+        (annualized), and <strong>Cost basis if assigned</strong> — your true price after premium.</li>
+        <li>Check <strong>Discount to current</strong> — how far below today's price you'd effectively buy.</li>
+      </ul>
+      <div class="do">✍️ <strong>Worked example:</strong> A stock trades at $52 and you'd love it at
+      $48. You sell a $48 put, 30 days out, for $0.80, and hold $4,800 in cash. You collect
+      <strong>$80</strong>. If it stays above $48, you keep the $80 and repeat. If it drops, you buy
+      at $48 — but your real cost is <strong>$47.20</strong> after premium. You wanted it at $48; you
+      got it for less.</div>`,
+  },
+  {
+    nav: 'Strike & expiration',
+    html: `
+      <h3>Lesson 6 — Choosing the strike and expiration</h3>
+      <p>This is where the sweet spot lives. Two dials:</p>
+      <h3 style="font-size:14px">Delta — your risk dial</h3>
+      <p>Delta ≈ the probability of assignment. A common target is around <strong>0.30 delta</strong>
+      — roughly a 30% chance of being assigned, so ~70% of the time the option expires worthless and
+      you simply keep the premium. Lower delta = safer but less income; higher = more income but you
+      get assigned more often. The app's <strong>★ target zone</strong> highlights this band for you.</p>
+      <h3 style="font-size:14px">Time — the expiration dial</h3>
+      <p>Options lose value as they age (that decay works <em>for</em> you as a seller, and it speeds
+      up near expiration). Many sellers favor <strong>30–45 days</strong> out — a good balance of
+      premium and decay. The app defaults to ~30 days for this reason.</p>
+      <div class="do">✍️ <strong>Try it:</strong> With a ticker loaded, click three different strikes
+      in a row and watch the <strong>annualized return</strong> change. That number lets you compare a
+      30-day trade against a 45-day one fairly. Hunt for the best annualized return at a risk level
+      you're comfortable with — that's the whole decision.</div>`,
+  },
+  {
+    nav: 'Managing risk',
+    html: `
+      <h3>Lesson 7 — Managing the risks</h3>
+      <p>Selling options is conservative, not risk-free. Four things to watch — the app surfaces all
+      of them:</p>
+      <dl>
+        <dt>📅 Events (earnings & dividends)</dt><dd>Earnings can cause big surprise moves. If a
+        strike's row shows <strong>⚠️</strong>, an event lands before it expires. Many beginners avoid
+        selling across earnings until they're comfortable.</dd>
+        <dt>📈 IV (implied volatility)</dt><dd>Higher IV = fatter premiums, because the market expects
+        bigger moves. Selling when IV is elevated pays you more for the same risk. The <strong>IV</strong>
+        badge shows the current level.</dd>
+        <dt>💧 Liquidity (the spread)</dt><dd>A wide/red <strong>spread</strong> means you'll get a bad
+        fill. Stick to tight spreads on well-known names.</dd>
+        <dt>🛡️ Downside</dt><dd>A covered call's premium cushions small dips but won't save you in a
+        crash — you still own the stock. Only sell calls on shares you're comfortable holding.</dd>
+      </dl>
+      <div class="tip">💡 Golden rule: only sell covered calls on shares you'd be happy to sell, and
+      cash-secured puts on stocks you'd be happy to own. Then every outcome is a good one.</div>`,
+  },
+  {
+    nav: 'Your routine + the Wheel',
+    html: `
+      <h3>Lesson 8 — A repeatable routine (and "the Wheel")</h3>
+      <p>Put it all together into a simple weekly habit:</p>
+      <ul>
+        <li><strong>1.</strong> Load your ticker. Check the price and the events badges.</li>
+        <li><strong>2.</strong> Pick the strategy: own the shares → covered call; want to buy → put.</li>
+        <li><strong>3.</strong> Choose ~30 days out, click a strike in the target zone.</li>
+        <li><strong>4.</strong> Read the annualized return; compare a couple of strikes.</li>
+        <li><strong>5.</strong> Glance at news and the ⚠️ flags. No surprises? Place the trade with your broker.</li>
+      </ul>
+      <h3 style="font-size:14px">The Wheel — how the two strategies connect</h3>
+      <p>Many income traders run a loop called <strong>the Wheel</strong>:</p>
+      <ul>
+        <li>Sell a <strong>cash-secured put</strong> on a stock you want. Collect premium.</li>
+        <li>If assigned, you now <strong>own the shares</strong> (at a discount).</li>
+        <li>Sell <strong>covered calls</strong> on those shares. Collect more premium.</li>
+        <li>If called away, you're back to cash — start over.</li>
+      </ul>
+      <p>At every step you're collecting premium, and this app plans every step. That's the whole game.</p>
+      <div class="tip">🎓 <strong>You've finished the course.</strong> Revisit any lesson anytime from
+      the <strong>📚 Course</strong> tab, and lean on the hovers and Glossary while you practice. Go
+      load a ticker and try a plan — nothing beats hands-on.</div>`,
+  },
+];
+
 // ============ Modal wiring ============
 const helpOverlay = document.getElementById('help-overlay');
 const helpBody = document.getElementById('help-body');
+let courseIdx = 0;
+
+function renderCourse(idx) {
+  courseIdx = Math.max(0, Math.min(idx, COURSE.length - 1));
+  const lesson = COURSE[courseIdx];
+  const nav = COURSE.map((l, i) =>
+    `<button class="course-navitem ${i === courseIdx ? 'active' : ''}" data-lesson="${i}">${i + 1}. ${l.nav}</button>`
+  ).join('');
+  helpBody.innerHTML = `
+    <div class="course">
+      <aside class="course-nav">${nav}</aside>
+      <div class="course-content">
+        <div class="course-lesson">${lesson.html}</div>
+        <div class="course-foot">
+          <button class="ghost-btn" id="course-prev" ${courseIdx === 0 ? 'disabled' : ''}>← Previous</button>
+          <span class="course-progress">Lesson ${courseIdx + 1} of ${COURSE.length}</span>
+          <button class="primary-btn" id="course-next" ${courseIdx === COURSE.length - 1 ? 'disabled' : ''}>Next →</button>
+        </div>
+      </div>
+    </div>`;
+  helpBody.scrollTop = 0;
+  helpBody.querySelectorAll('.course-navitem').forEach((b) =>
+    b.addEventListener('click', () => renderCourse(Number(b.dataset.lesson))));
+  const prev = helpBody.querySelector('#course-prev');
+  const next = helpBody.querySelector('#course-next');
+  if (prev) prev.addEventListener('click', () => renderCourse(courseIdx - 1));
+  if (next) next.addEventListener('click', () => renderCourse(courseIdx + 1));
+}
 
 function renderHelpTab(tab) {
-  helpBody.innerHTML = HELP[tab] || HELP.start;
-  helpBody.scrollTop = 0;
   document.querySelectorAll('#help-tabs button').forEach((b) =>
     b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'course') { renderCourse(courseIdx); return; }
+  helpBody.innerHTML = HELP[tab] || HELP.start;
+  helpBody.scrollTop = 0;
 }
 function openHelp() { renderHelpTab('start'); helpOverlay.classList.remove('hidden'); }
 function closeHelp() { helpOverlay.classList.add('hidden'); }
