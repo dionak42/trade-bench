@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Options &amp; News Planner</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📈 Options &amp; News Planner</div>
+    <form id="search-form" class="search">
+      <input id="search-input" type="text" placeholder="Ticker (e.g. NVDA)"
+             autocomplete="off" spellcheck="false" aria-label="Ticker symbol" />
+      <button type="submit">Load</button>
+    </form>
+    <div class="topbar-actions">
+      <button id="tour-btn" class="ghost-btn" type="button" title="Take a guided tour">Tour</button>
+      <button id="help-btn" class="ghost-btn" type="button" title="How to use this app">? Help</button>
+    </div>
+    <div id="refresh-status" class="refresh-status" title="Data auto-refreshes in the background">—</div>
+  </header>
+
+  <main id="app">
+    <!-- Empty state -->
+    <section id="empty-state" class="empty-state">
+      <h1>Plan a covered call or cash-secured put</h1>
+      <p>Enter a ticker above to load its price, options chain, upcoming events, and news.</p>
+      <div id="watchlist-empty" class="watchlist-chips"></div>
+    </section>
+
+    <!-- Loaded content -->
+    <div id="content" class="content hidden">
+      <!-- Price + events header strip -->
+      <section id="ticker-header" class="ticker-header"></section>
+
+      <div class="grid">
+        <!-- Options chain -->
+        <section class="card chain-card">
+          <div class="card-head">
+            <h2>Options Chain</h2>
+            <div class="chain-controls">
+              <div class="toggle" id="type-toggle" role="tablist">
+                <button class="active" data-type="call" role="tab">Calls</button>
+                <button data-type="put" role="tab">Puts</button>
+              </div>
+              <select id="exp-select" aria-label="Expiration"></select>
+              <button id="zone-toggle" class="zone-toggle active" type="button"
+                data-tip="Highlights the ~0.20–0.35 delta band and stars the strike near 0.30 delta — a common income-selling target (≈30% chance of assignment, ≈70% chance you keep the premium). A rule of thumb, not advice.">★ Target zone</button>
+            </div>
+          </div>
+          <div class="chain-scroll">
+            <table class="chain-table">
+              <thead>
+                <tr>
+                  <th data-tip="Strike — the price your shares get sold at (call) or you buy at (put). Click a row to load it into the calculator.">Strike</th>
+                  <th data-tip="Bid — the premium per share you collect for selling this option (×100 per contract). Higher = more income.">Bid</th>
+                  <th data-tip="Delta ≈ the chance the option finishes in-the-money (gets assigned). Lower = safer but less premium; higher = more premium, more likely to trigger.">Δ / Prob</th>
+                  <th data-tip="Implied Volatility — how much movement the market expects. Higher IV = fatter premiums, but more risk.">IV</th>
+                  <th data-tip="Bid-ask spread. Tight = easy fill at a fair price. Red/wide = illiquid — you'll get a worse fill, so prefer tight spreads.">Spread</th>
+                  <th data-tip="Days To Expiration — calendar days until the option expires. Fewer days = faster premium decay in your favor.">DTE</th>
+                </tr>
+              </thead>
+              <tbody id="chain-body"></tbody>
+            </table>
+          </div>
+          <p class="hint">Click any row to load it into the calculator. <span title="At-the-money: the strike closest to the current price">● = at-the-money (closest to price)</span></p>
+        </section>
+
+        <!-- Calculator -->
+        <section class="card calc-card">
+          <div class="card-head">
+            <h2>Calculator</h2>
+            <div class="toggle" id="calc-toggle" role="tablist">
+              <button class="active" data-calc="cc" role="tab">Covered Call</button>
+              <button data-calc="csp" role="tab">Cash-Secured Put</button>
+            </div>
+          </div>
+          <div id="calc-body"></div>
+        </section>
+      </div>
+
+      <div class="grid grid-lower">
+        <!-- Events + IV detail -->
+        <section class="card">
+          <div class="card-head"><h2>Upcoming Events</h2></div>
+          <div id="events-body" class="events-body"></div>
+        </section>
+
+        <!-- News -->
+        <section class="card">
+          <div class="card-head">
+            <h2>News</h2>
+            <a id="wsj-link" class="wsj-link hidden" target="_blank" rel="noopener noreferrer"
+               data-tip="Opens WSJ's page for this ticker in your browser — full articles via your subscription. WSJ isn't shown inline (no public per-ticker feed).">Open in WSJ →</a>
+          </div>
+          <ul id="news-body" class="news-list"></ul>
+        </section>
+      </div>
+    </div>
+
+    <!-- Watchlist -->
+    <section class="card watchlist-card">
+      <div class="card-head"><h2>Watchlist</h2></div>
+      <form id="watchlist-form" class="watchlist-form">
+        <input id="wl-symbol" placeholder="Symbol" aria-label="Symbol" />
+        <input id="wl-shares" type="number" min="0" placeholder="Shares" aria-label="Shares" />
+        <input id="wl-notes" placeholder="Notes (optional)" aria-label="Notes" />
+        <button type="submit">Add</button>
+      </form>
+      <ul id="watchlist-body" class="watchlist-list"></ul>
+    </section>
+  </main>
+
+  <!-- Help modal -->
+  <div id="help-overlay" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <div class="modal-head">
+        <h2 id="help-title">How to use the Options &amp; News Planner</h2>
+        <button id="help-close" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-tabs" id="help-tabs">
+        <button class="active" data-tab="start">Quick Start</button>
+        <button data-tab="cc">Covered Calls</button>
+        <button data-tab="csp">Cash-Secured Puts</button>
+        <button data-tab="chain">Reading the Chain</button>
+        <button data-tab="glossary">Glossary</button>
+      </div>
+      <div class="modal-body" id="help-body"></div>
+      <div class="modal-foot">
+        <button id="help-tour" class="primary-btn">▶ Take the guided tour</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Guided tour -->
+  <div id="tour-overlay" class="tour-overlay hidden">
+    <div id="tour-spotlight" class="tour-spotlight"></div>
+    <div id="tour-tip" class="tour-tip">
+      <div id="tour-tip-text" class="tour-tip-text"></div>
+      <div class="tour-tip-foot">
+        <span id="tour-progress" class="tour-progress"></span>
+        <div class="tour-tip-btns">
+          <button id="tour-skip" class="ghost-btn">Skip</button>
+          <button id="tour-back" class="ghost-btn">Back</button>
+          <button id="tour-next" class="primary-btn">Next</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script src="help.js"></script>
+  <script src="tooltip.js"></script>
+</body>
+</html>
