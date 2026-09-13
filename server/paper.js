@@ -34,9 +34,10 @@ export function getPositions() {
   return call('/v2/positions');
 }
 
-// status: 'open' | 'closed' | 'all'
+// status: 'open' | 'closed' | 'all' (whitelisted to avoid query injection)
 export function getOrders(status = 'open') {
-  return call(`/v2/orders?status=${status}&limit=50&nested=true`);
+  const s = ['open', 'closed', 'all'].includes(status) ? status : 'open';
+  return call(`/v2/orders?status=${s}&limit=50&nested=true`);
 }
 
 export function placeOrder(order) {
@@ -44,7 +45,7 @@ export function placeOrder(order) {
 }
 
 export function cancelOrder(id) {
-  return call(`/v2/orders/${id}`, { method: 'DELETE' });
+  return call(`/v2/orders/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
 export function closePosition(symbol) {

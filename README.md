@@ -1,9 +1,19 @@
-# Options & News Planner
+# Trade Bench
 
-A personal web app for planning **covered calls** and **cash-secured puts**, with a live
-options chain, greeks, upcoming events (earnings + ex-dividends), ticker news, and a shared
-watchlist. Runs on a Mac mini and is reachable by two people over Tailscale — no login,
-no public internet exposure.
+A personal trade-planning and paper-practice tool. Three views per ticker:
+
+- **🔍 Research** — technical scorecard (trend, RSI, volatility, support/resistance),
+  a bracket **trade-plan builder** (entry / target / trailing stop with risk-reward math),
+  and **historical replay** to backtest a stock plan against past prices.
+- **📊 Options** — covered-call and cash-secured-put planning off a live options chain
+  with greeks, upcoming events (earnings + ex-dividends), IV rank, and news.
+- **📈 Paper** — place plans as real orders in an Alpaca **paper account** (stocks via
+  bracket orders, plus covered calls / CSPs) and track positions, orders, and P&L.
+
+Plus a shared watchlist, an interactive course, and a guided tour. Runs on a Mac mini and is
+reachable by two people over Tailscale — no login, no public internet exposure.
+
+> Educational tool for planning and practice. Not financial advice.
 
 ## Stack
 

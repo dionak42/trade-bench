@@ -379,6 +379,21 @@ body {
 .paper-table td:nth-child(2), .paper-table td:nth-child(3),
 .paper-table td:nth-child(4) { font-variant-numeric: tabular-nums; }
 
+/* ---------- Historical replay ---------- */
+.replay-controls { display: flex; align-items: flex-end; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+.replay-controls .field { margin: 0; }
+.replay-controls input {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface-alt); color: var(--text); font-size: 15px;
+}
+.replay-outcome {
+  font-size: 20px; font-weight: 800; text-align: center;
+  padding: 14px; border-radius: var(--radius); margin-bottom: 14px;
+  background: var(--surface-alt);
+}
+.replay-outcome.good { background: var(--good-soft); color: var(--good); }
+.replay-outcome.bad { background: var(--bad-soft); color: var(--bad); }
+
 /* ---------- Top-bar action buttons ---------- */
 .topbar-actions { display: flex; gap: 8px; }
 .ghost-btn {

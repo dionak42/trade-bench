@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Options &amp; News Planner</title>
+  <title>Trade Bench</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">📈 Options &amp; News Planner</div>
+    <div class="brand">🛠️ Trade Bench</div>
     <form id="search-form" class="search">
       <input id="search-input" type="text" placeholder="Ticker (e.g. NVDA)"
              autocomplete="off" spellcheck="false" aria-label="Ticker symbol" />
@@ -24,8 +24,8 @@
   <main id="app">
     <!-- Empty state -->
     <section id="empty-state" class="empty-state">
-      <h1>Plan a covered call or cash-secured put</h1>
-      <p>Enter a ticker above to load its price, options chain, upcoming events, and news.</p>
+      <h1>Research, plan, and practice your trades</h1>
+      <p>Enter a ticker above to analyze the stock, build a trade plan, replay it on history, plan options, and practice in paper.</p>
       <div id="watchlist-empty" class="watchlist-chips"></div>
     </section>
 
@@ -35,8 +35,8 @@
       <section id="ticker-header" class="ticker-header"></section>
 
       <div class="view-toggle" id="view-toggle">
-        <button data-view="planner" class="active" type="button">📊 Options Planner</button>
-        <button data-view="analysis" type="button">🔍 Analysis</button>
+        <button data-view="analysis" class="active" type="button">🔍 Research</button>
+        <button data-view="planner" type="button">📊 Options</button>
         <button data-view="paper" type="button">📈 Paper</button>
       </div>
 
@@ -115,6 +115,13 @@
           </div>
           <div id="plan-builder"></div>
         </section>
+        <section class="card">
+          <div class="card-head">
+            <h2>Historical Replay</h2>
+            <span class="not-advice" data-tip="Runs the plan above against past price data from a chosen start date, to see how it would have played out. A backtest for learning — past results, not a prediction.">Backtest, not a prediction</span>
+          </div>
+          <div id="replay-body"></div>
+        </section>
       </div>
 
       <div id="paper-view" class="hidden">
@@ -151,7 +158,7 @@
   <div id="help-overlay" class="modal-overlay hidden">
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="help-title">
       <div class="modal-head">
-        <h2 id="help-title">How to use the Options &amp; News Planner</h2>
+        <h2 id="help-title">How to use Trade Bench</h2>
         <button id="help-close" class="modal-close" aria-label="Close">✕</button>
       </div>
       <div class="modal-tabs" id="help-tabs">

@@ -1,7 +1,7 @@
 {
-  "name": "options-news-planner",
+  "name": "trade-bench",
   "version": "1.0.0",
-  "description": "Personal covered-call and cash-secured-put planner with live options data and ticker news, served over Tailscale.",
+  "description": "Personal trade-planning and paper-practice tool: stock research + bracket planner + historical replay, covered-call/cash-secured-put options planning, and Alpaca paper trading. Served over Tailscale.",
   "type": "module",
   "main": "server/index.js",
   "scripts": {
