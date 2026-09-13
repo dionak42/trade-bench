@@ -12,6 +12,8 @@ const state = {
   selected: null,    // occSymbol
   lastUpdated: null,
   showTargetZone: true,
+  view: 'planner',   // 'planner' | 'analysis'
+  analysis: null,    // cached scorecard for the loaded symbol
 };
 
 const REFRESH_MS = 60 * 1000;
@@ -80,6 +82,7 @@ async function loadSymbol(sym) {
     state.events = events;
     state.ivrank = ivrank;
     state.lastUpdated = Date.now();
+    state.analysis = null; // recomputed lazily when the Analysis view opens
 
     // Default expiration ≈ 30 days out — the natural horizon for covered
     // calls / CSPs. (Nearest weekly annualizes to misleadingly huge numbers.)
@@ -97,6 +100,7 @@ async function loadSymbol(sym) {
     wsj.classList.remove('hidden');
     selectDefaultContract();
     startAutoRefresh();
+    if (state.view === 'analysis') loadAnalysis();
   } catch (err) {
     showError(err.message);
   }
@@ -604,6 +608,121 @@ document.addEventListener('visibilitychange', () => {
   updateRefreshTick();
   if (!document.hidden) refreshQuote(); // catch up immediately on return
 });
+
+// ---------- Analysis view ----------
+async function loadAnalysis() {
+  const sc = $('#scorecard');
+  if (state.analysis) {
+    renderScorecard(state.analysis);
+    renderPlanBuilder(state.analysis);
+    return;
+  }
+  sc.innerHTML = '<div class="loading">Analyzing price history…</div>';
+  $('#plan-builder').innerHTML = '';
+  try {
+    const a = await api(`/analysis/${state.symbol}`);
+    state.analysis = a;
+    renderScorecard(a);
+    renderPlanBuilder(a);
+  } catch (err) {
+    sc.innerHTML = `<div class="error-banner">Couldn’t analyze ${state.symbol}: ${err.message}</div>`;
+  }
+}
+
+function scoreCard(title, value, sub, cls = '') {
+  return `
+    <div class="score-card">
+      <div class="sc-title">${title}</div>
+      <div class="sc-value ${cls}">${value}</div>
+      <div class="sc-sub">${sub}</div>
+    </div>`;
+}
+
+function renderScorecard(a) {
+  const t = a.trend, m = a.momentum, v = a.volatility, l = a.levels, s = a.sentiment;
+  const trendCls = t.label === 'Uptrend' ? 'good' : t.label === 'Downtrend' ? 'bad' : '';
+  const rsiCls = m.label === 'Oversold' ? 'good' : m.label === 'Overbought' ? 'warn' : '';
+  const sentCls = s.label === 'Positive' ? 'good' : s.label === 'Negative' ? 'bad' : '';
+  const rsiNote = m.label === 'Overbought' ? ' — may be extended'
+    : m.label === 'Oversold' ? ' — may be due for a bounce' : ' — mid-range';
+  $('#scorecard').innerHTML = `
+    ${scoreCard('Trend', t.label,
+      `${t.priceVsSma50 >= 0 ? 'Above' : 'Below'} 50-day (${money(t.sma50)}), ${t.priceVsSma200 >= 0 ? 'above' : 'below'} 200-day (${money(t.sma200)})`,
+      trendCls)}
+    ${scoreCard('Momentum (RSI)', m.rsi14 != null ? m.rsi14.toFixed(0) : '—',
+      m.label + rsiNote, rsiCls)}
+    ${scoreCard('Volatility', v.atrPct != null ? '±' + pct(v.atrPct, 1) : '—',
+      v.atr14 != null ? `~${money(v.atr14)} average daily move` : '', '')}
+    ${scoreCard('Support / Resistance', `${money(l.support20)} / ${money(l.resistance20)}`,
+      `52-week range ${money(l.low52)} – ${money(l.high52)}`, '')}
+    ${scoreCard('News sentiment', s.label,
+      `${s.positiveHits}▲ / ${s.negativeHits}▼ across ${s.headlineCount} headlines`, sentCls)}`;
+}
+
+function renderPlanBuilder(a) {
+  const l = a.levels, v = a.volatility;
+  const entry = l.support20.toFixed(2);
+  const target = l.resistance20.toFixed(2);
+  const stopPct = Math.max(2, Math.round((v.atrPct || 0.03) * 2 * 100)); // ~2× avg daily move
+  $('#plan-builder').innerHTML = `
+    <div class="calc-inputs">
+      ${field('plan-entry', 'Entry (buy limit)', entry, 'The price you set your buy order at. A dip to here fills you — buying weakness. Defaults to 20-day support.')}
+      ${field('plan-target', 'Profit target', target, 'Where you sell all or part of the position. Defaults to 20-day resistance.')}
+      ${field('plan-stop', 'Trailing stop %', stopPct, 'How far below the peak the runner can fall before it sells. Defaults to ~2× the average daily move.')}
+      ${field('plan-capital', 'Capital ($)', 5000, 'Dollars to allocate to this trade.')}
+    </div>
+    <div id="plan-out"></div>`;
+  $('#plan-builder').querySelectorAll('input').forEach((inp) =>
+    inp.addEventListener('input', computePlan));
+  computePlan();
+}
+
+function computePlan() {
+  const out = $('#plan-out');
+  if (!out) return;
+  const entry = val('plan-entry'), target = val('plan-target');
+  const stopPct = val('plan-stop'), capital = val('plan-capital');
+  const shares = Math.floor(capital / entry) || 0;
+  const stopPrice = entry * (1 - stopPct / 100);
+  const riskPS = entry - stopPrice;
+  const rewardPS = target - entry;
+  const rr = riskPS > 0 ? rewardPS / riskPS : null;
+  const toTarget = (target - entry) / entry;
+  const good = rr != null && rr >= 2;
+  out.innerHTML = `
+    <div class="headline-return" style="background:${good ? 'var(--good-soft)' : 'var(--surface-alt)'}">
+      <div class="big" style="color:${good ? 'var(--good)' : 'var(--text)'}">${rr != null ? rr.toFixed(2) + ' : 1' : '—'}</div>
+      <div class="lbl">Reward-to-risk ratio</div>
+    </div>
+    <div class="outputs">
+      ${outCell('Shares', shares)}
+      ${outCell('Stop price', money(stopPrice), '', 'Entry minus the trailing-stop %.')}
+      ${outCell('Risk / share', money(riskPS), 'bad')}
+      ${outCell('Reward / share', money(rewardPS), rewardPS >= 0 ? 'good' : 'bad')}
+      ${outCell('$ at risk', money(riskPS * shares), 'bad', 'Loss if the stop is hit on the full position.')}
+      ${outCell('$ at target', money(rewardPS * shares), 'good', 'Gain if the target is hit on the full position.')}
+      ${outCell('% to target', pct(toTarget))}
+      ${outCell('% to stop', pct(-stopPct / 100))}
+    </div>
+    <div class="scenario">
+      <strong>Plan:</strong> set a buy limit at ${money(entry)}. If filled, sell part at
+      ${money(target)} (+${pct(toTarget)}), then trail the rest with a ${stopPct}% stop.
+      <br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the
+      Options Planner and sell a cash-secured put around that strike.</span>
+    </div>`;
+}
+
+function switchView(v) {
+  state.view = v;
+  $('#view-toggle').querySelectorAll('button').forEach((b) =>
+    b.classList.toggle('active', b.dataset.view === v));
+  $('#planner-view').classList.toggle('hidden', v !== 'planner');
+  $('#analysis-view').classList.toggle('hidden', v !== 'analysis');
+  if (v === 'analysis' && state.symbol) loadAnalysis();
+}
+
+$('#view-toggle').querySelectorAll('button').forEach((b) =>
+  b.addEventListener('click', () => switchView(b.dataset.view)));
 
 // ---------- Public hooks (used by help.js / tour) ----------
 window.planner = {
