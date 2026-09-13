@@ -12,8 +12,8 @@ Everything here is **free**: it uses paper trading (fake money) and free data ti
 ## 2. Get the code
 
 ```
-git clone https://github.com/dionak42/call-put-calc.git
-cd call-put-calc
+git clone https://github.com/dionak42/trade-bench.git
+cd trade-bench
 ```
 
 ## 3. Run setup

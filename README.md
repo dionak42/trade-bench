@@ -154,7 +154,7 @@ small future enhancement.)_
 ## Project structure
 
 ```
-call-put-calc/
+trade-bench/
 ├── .env                 # API keys (gitignored)
 ├── package.json
 ├── data/planner.db      # SQLite (auto-created, gitignored)
