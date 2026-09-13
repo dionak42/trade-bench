@@ -406,7 +406,9 @@ function compute() {
         (${money(strike * 100 * contracts)}) and keep ${money(premCollected)} premium
         → total ${money(strike * 100 * contracts + premCollected)}.
         ${uncovered ? `${uncovered} share${uncovered === 1 ? '' : 's'} remain uncovered.` : ''}
-      </div>`;
+      </div>
+      <button class="primary-btn place-btn" id="opt-place">📈 Paper trade this covered call</button>
+      <div class="place-note">Sells ${contracts} contract${contracts === 1 ? '' : 's'} at ${money(premium)}/share. Simulated — needs 100+ shares per contract in the paper account.</div>`;
   } else {
     const price = val('csp-price'), strike = val('csp-strike'), premium = val('csp-premium');
     const dte = val('csp-dte'), contracts = val('csp-contracts'), delta = val('csp-delta');
@@ -437,8 +439,33 @@ function compute() {
         <strong>If assigned:</strong> buy ${contracts * 100} shares at ${money(strike)}
         (${money(cashRequired)}), for an effective cost of ${money(breakeven)}/share after premium —
         a ${pct(discount)} ${discount >= 0 ? 'discount to' : 'premium over'} today’s ${money(price)}.
-      </div>`;
+      </div>
+      ${contracts >= 1 && premium > 0 ? `
+      <button class="primary-btn place-btn" id="opt-place">📈 Paper trade this cash-secured put</button>
+      <div class="place-note">Sells ${contracts} put${contracts === 1 ? '' : 's'} at ${money(premium)}/share. Simulated.</div>` : ''}`;
   }
+  const optBtn = document.getElementById('opt-place');
+  if (optBtn) optBtn.addEventListener('click', placeOptionPaper);
+}
+
+function placeOptionPaper() {
+  const c = contractBy(state.selected);
+  if (!c) return;
+  let contracts, premium, kind;
+  if (state.calcType === 'cc') {
+    contracts = Math.floor(val('cc-shares') / 100);
+    premium = val('cc-premium');
+    kind = 'covered call';
+  } else {
+    contracts = Math.floor(val('csp-contracts'));
+    premium = val('csp-premium');
+    kind = 'cash-secured put';
+  }
+  if (!contracts || contracts < 1) { window.alert('Need at least 1 contract.'); return; }
+  placePaperOrder({
+    symbol: c.occSymbol, qty: contracts, side: 'sell', type: 'limit',
+    limit_price: round2(premium), time_in_force: 'day',
+  }, `Sell ${contracts} ${state.symbol} ${kind}${contracts === 1 ? '' : 's'} (${c.type} $${c.strike}, exp ${c.expiration}) at ${money(premium)}/share?\n\nPaper order — simulated, no real money.`);
 }
 
 function warningHtml(flags) {
@@ -709,8 +736,22 @@ function computePlan() {
       ${money(target)} (+${pct(toTarget)}), then trail the rest with a ${stopPct}% stop.
       <br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the
       Options Planner and sell a cash-secured put around that strike.</span>
-    </div>`;
+    </div>
+    ${shares >= 1 && rr != null && state.symbol ? `
+      <button class="primary-btn place-btn" id="plan-place">📈 Place as paper bracket order</button>
+      <div class="place-note">Buys ${shares} ${state.symbol} with a take-profit at ${money(target)} and a fixed stop at ${money(stopPrice)}. Simulated — no real money.</div>` : ''}`;
+  const btn = document.getElementById('plan-place');
+  if (btn) {
+    btn.addEventListener('click', () => placePaperOrder({
+      symbol: state.symbol, qty: shares, side: 'buy', type: 'limit',
+      limit_price: round2(entry), time_in_force: 'gtc', order_class: 'bracket',
+      take_profit: { limit_price: round2(target) },
+      stop_loss: { stop_price: round2(stopPrice) },
+    }, `Place a paper BRACKET order:\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\n\nProceed? (simulated, no real money)`));
+  }
 }
+
+const round2 = (n) => Number(Number(n).toFixed(2));
 
 function switchView(v) {
   state.view = v;
@@ -718,11 +759,122 @@ function switchView(v) {
     b.classList.toggle('active', b.dataset.view === v));
   $('#planner-view').classList.toggle('hidden', v !== 'planner');
   $('#analysis-view').classList.toggle('hidden', v !== 'analysis');
+  $('#paper-view').classList.toggle('hidden', v !== 'paper');
   if (v === 'analysis' && state.symbol) loadAnalysis();
+  if (v === 'paper') loadPaper();
 }
 
 $('#view-toggle').querySelectorAll('button').forEach((b) =>
   b.addEventListener('click', () => switchView(b.dataset.view)));
+
+// ---------- Paper trading ----------
+async function loadPaper() {
+  $('#paper-account').innerHTML = '<div class="loading">Loading paper account…</div>';
+  $('#paper-positions').innerHTML = '';
+  $('#paper-orders').innerHTML = '';
+  try {
+    const [account, pos, ord] = await Promise.all([
+      api('/paper/account'),
+      api('/paper/positions'),
+      api('/paper/orders?status=open'),
+    ]);
+    renderPaperAccount(account);
+    renderPaperPositions(pos.positions);
+    renderPaperOrders(ord.orders);
+  } catch (err) {
+    $('#paper-account').innerHTML = `<div class="error-banner">Paper account error: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderPaperAccount(a) {
+  const pl = Number(a.portfolio_value) - Number(a.last_equity);
+  const plCls = pl >= 0 ? 'good' : 'bad';
+  $('#paper-account').innerHTML = `
+    ${scoreCard('Portfolio value', money(Number(a.portfolio_value)), 'Cash + positions')}
+    ${scoreCard('Cash', money(Number(a.cash)), 'Available to trade')}
+    ${scoreCard('Buying power', money(Number(a.buying_power)), 'Incl. margin')}
+    ${scoreCard('Day P&L', (pl >= 0 ? '+' : '') + money(pl), 'Since prior close', plCls)}`;
+}
+
+function renderPaperPositions(positions) {
+  if (!positions.length) {
+    $('#paper-positions').innerHTML = '<div class="event-none">No open positions. Place a trade from the Analysis or Options Planner view.</div>';
+    return;
+  }
+  const rows = positions.map((p) => {
+    const pl = Number(p.unrealized_pl);
+    const plp = Number(p.unrealized_plpc) * 100;
+    const cls = pl >= 0 ? 'good' : 'bad';
+    return `
+      <tr>
+        <td>${esc(p.symbol)}</td>
+        <td>${p.qty}</td>
+        <td>${money(Number(p.avg_entry_price))}</td>
+        <td>${money(Number(p.current_price))}</td>
+        <td class="${cls}">${pl >= 0 ? '+' : ''}${money(pl)} (${plp.toFixed(1)}%)</td>
+        <td><button class="ghost-btn sm" data-close="${esc(p.symbol)}">Close</button></td>
+      </tr>`;
+  }).join('');
+  $('#paper-positions').innerHTML = `
+    <div class="chain-scroll"><table class="chain-table paper-table">
+      <thead><tr><th>Symbol</th><th>Qty</th><th>Avg entry</th><th>Current</th><th>Unrealized P&L</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  $('#paper-positions').querySelectorAll('[data-close]').forEach((btn) =>
+    btn.addEventListener('click', () => closePaperPosition(btn.dataset.close)));
+}
+
+function renderPaperOrders(orders) {
+  if (!orders.length) {
+    $('#paper-orders').innerHTML = '<div class="event-none">No open orders.</div>';
+    return;
+  }
+  const rows = orders.map((o) => `
+    <tr>
+      <td>${esc(o.symbol)}</td>
+      <td>${o.side}</td>
+      <td>${o.type}${o.order_class && o.order_class !== 'simple' ? ' · ' + o.order_class : ''}</td>
+      <td>${o.qty}</td>
+      <td>${o.limit_price ? money(Number(o.limit_price)) : (o.stop_price ? 'stop ' + money(Number(o.stop_price)) : o.type)}</td>
+      <td>${esc(o.status)}</td>
+      <td><button class="ghost-btn sm" data-cancel="${esc(o.id)}">Cancel</button></td>
+    </tr>`).join('');
+  $('#paper-orders').innerHTML = `
+    <div class="chain-scroll"><table class="chain-table paper-table">
+      <thead><tr><th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th><th>Price</th><th>Status</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  $('#paper-orders').querySelectorAll('[data-cancel]').forEach((btn) =>
+    btn.addEventListener('click', () => cancelPaperOrder(btn.dataset.cancel)));
+}
+
+async function placePaperOrder(order, confirmMsg) {
+  if (!window.confirm(confirmMsg)) return;
+  try {
+    await api('/paper/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(order),
+    });
+    switchView('paper'); // jump to the paper view and refresh
+    window.alert('Paper order placed.');
+  } catch (err) {
+    window.alert('Order rejected: ' + err.message);
+  }
+}
+
+async function cancelPaperOrder(id) {
+  try { await api(`/paper/order/${id}`, { method: 'DELETE' }); loadPaper(); }
+  catch (err) { window.alert('Cancel failed: ' + err.message); }
+}
+
+async function closePaperPosition(symbol) {
+  if (!window.confirm(`Close your entire ${symbol} paper position at market?`)) return;
+  try { await api(`/paper/close/${encodeURIComponent(symbol)}`, { method: 'POST' }); loadPaper(); }
+  catch (err) { window.alert('Close failed: ' + err.message); }
+}
+
+$('#paper-refresh').addEventListener('click', loadPaper);
 
 // ---------- Public hooks (used by help.js / tour) ----------
 window.planner = {

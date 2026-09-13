@@ -5,6 +5,9 @@ import { getUnderlyingPrice, getOptionsChain, getUpcomingDividend } from './alpa
 import { getNews, getNextEarnings } from './finnhub.js';
 import { ivRankFor } from './ivrank.js';
 import { buildAnalysis } from './analysis.js';
+import {
+  getAccount, getPositions, getOrders, placeOrder, cancelOrder, closePosition,
+} from './paper.js';
 import { listWatchlist, addWatchlist, removeWatchlist } from './db.js';
 
 const router = Router();
@@ -55,6 +58,33 @@ router.get('/ivrank/:symbol', wrap(async (req, res) => {
 router.get('/analysis/:symbol', wrap(async (req, res) => {
   const data = await buildAnalysis(req.params.symbol.toUpperCase());
   res.json(data);
+}));
+
+// ---- Paper trading (Alpaca paper account) ----
+router.get('/paper/account', wrap(async (_req, res) => {
+  res.json(await getAccount());
+}));
+
+router.get('/paper/positions', wrap(async (_req, res) => {
+  res.json({ positions: await getPositions() });
+}));
+
+router.get('/paper/orders', wrap(async (req, res) => {
+  res.json({ orders: await getOrders(req.query.status || 'open') });
+}));
+
+router.post('/paper/order', wrap(async (req, res) => {
+  const order = await placeOrder(req.body ?? {});
+  res.status(201).json({ order });
+}));
+
+router.delete('/paper/order/:id', wrap(async (req, res) => {
+  await cancelOrder(req.params.id);
+  res.status(204).end();
+}));
+
+router.post('/paper/close/:symbol', wrap(async (req, res) => {
+  res.json({ order: await closePosition(req.params.symbol) });
 }));
 
 // Shared watchlist CRUD.
