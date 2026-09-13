@@ -5,6 +5,7 @@ import { getUnderlyingPrice, getOptionsChain, getUpcomingDividend } from './alpa
 import { getNews, getNextEarnings } from './finnhub.js';
 import { ivRankFor } from './ivrank.js';
 import { buildAnalysis } from './analysis.js';
+import { runReplay } from './replay.js';
 import {
   getAccount, getPositions, getOrders, placeOrder, cancelOrder, closePosition,
 } from './paper.js';
@@ -58,6 +59,12 @@ router.get('/ivrank/:symbol', wrap(async (req, res) => {
 router.get('/analysis/:symbol', wrap(async (req, res) => {
   const data = await buildAnalysis(req.params.symbol.toUpperCase());
   res.json(data);
+}));
+
+// Historical scenario replay of a stock bracket plan (backtest).
+router.post('/replay/:symbol', wrap(async (req, res) => {
+  const result = await runReplay(req.params.symbol.toUpperCase(), req.body ?? {});
+  res.json(result);
 }));
 
 // ---- Paper trading (Alpaca paper account) ----
