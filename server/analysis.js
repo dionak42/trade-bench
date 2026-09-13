@@ -154,6 +154,25 @@ export async function buildAnalysis(symbol) {
     });
   }
 
+  // Golden / death cross: the most recent 50-day vs 200-day crossover in view.
+  let cross = null;
+  for (let i = 1; i < series.length; i++) {
+    const a = series[i - 1], b = series[i];
+    if (a.sma50 == null || a.sma200 == null || b.sma50 == null || b.sma200 == null) continue;
+    const prev = a.sma50 - a.sma200;
+    const cur = b.sma50 - b.sma200;
+    if (prev <= 0 && cur > 0) cross = { type: 'golden', date: b.d, index: i };
+    else if (prev >= 0 && cur < 0) cross = { type: 'death', date: b.d, index: i };
+  }
+  if (cross) {
+    cross.daysAgo = Math.round(
+      (Date.now() - new Date(cross.date + 'T00:00:00Z')) / 86400000
+    );
+  }
+  const regime = sma50 != null && sma200 != null
+    ? (sma50 >= sma200 ? 'golden' : 'death')
+    : null;
+
   return {
     symbol,
     price,
@@ -164,6 +183,8 @@ export async function buildAnalysis(symbol) {
       sma200,
       priceVsSma50: sma50 ? (price - sma50) / sma50 : null,
       priceVsSma200: sma200 ? (price - sma200) / sma200 : null,
+      regime, // 'golden' = 50 above 200 (uptrend regime), 'death' = below
+      cross,  // most recent crossover in the chart window, or null
     },
     momentum: {
       label: momentum, rsi14,

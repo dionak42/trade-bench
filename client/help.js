@@ -392,6 +392,39 @@ const COURSE = [
       history, practice it in paper — and run covered calls / puts the same way. Revisit any lesson
       from the 📚 Course tab.</div>`,
   },
+  {
+    nav: 'Build your system',
+    html: `
+      <h3>Lesson 12 — Building your trading system</h3>
+      <p>A <strong>trading system</strong> is a written set of rules you follow every time, so
+      you're never making emotional decisions with real money. It answers five questions:</p>
+      <dl>
+        <dt>1. What do I trade?</dt><dd>Your watchlist of stocks you'd genuinely want to own.</dd>
+        <dt>2. Should I buy this now?</dt><dd>A filter. Example: only take longs in a
+        <strong>golden-cross regime</strong> (50-day above 200-day) — skip downtrends. The Trend card shows it.</dd>
+        <dt>3. When exactly do I enter?</dt><dd>A rule, e.g. "set a buy limit on a pullback to
+        support and wait to get filled." No chasing.</dd>
+        <dt>4. How many shares?</dt><dd><strong>Size by risk.</strong> In the plan builder,
+        "Risk-based sizing" turns "risk 1% of my account" into a share count from your stop distance.
+        This is the most important rule.</dd>
+        <dt>5. When do I exit?</dt><dd>Decided up front — a profit target and a stop, placed as a
+        bracket. Then leave it alone.</dd>
+      </dl>
+      <div class="tip">💡 <strong>The rule that keeps you in the game:</strong> never risk more than
+      1–2% of the account on a single trade. If it's money you can't easily replace, this isn't
+      optional — it's what stops one bad trade from doing real damage.</div>
+      <h3 style="font-size:14px">A simple starter system</h3>
+      <ul>
+        <li>Trade only stocks in an uptrend (above the 200-day).</li>
+        <li>Buy on a pullback toward support with a buy limit.</li>
+        <li>Risk 1% of the account per trade — let the stop distance set the share count.</li>
+        <li>Target near resistance; trail a stop on the rest.</li>
+        <li>Review holdings weekly; a trend or momentum turn is a cue to re-check, not to panic.</li>
+      </ul>
+      <div class="do">✍️ <strong>Try it:</strong> Save your account size in ⚙ Settings, pick a stock
+      in an uptrend, build a 1%-risk plan, replay it on history, then place it in Paper. That's your
+      system, running.</div>`,
+  },
 ];
 
 // ============ Modal wiring ============
