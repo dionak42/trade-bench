@@ -93,23 +93,10 @@
         </section>
       </div>
 
-      <div class="grid grid-lower">
-        <!-- Events + IV detail -->
-        <section class="card">
-          <div class="card-head"><h2>Upcoming Events</h2></div>
-          <div id="events-body" class="events-body"></div>
-        </section>
-
-        <!-- News -->
-        <section class="card">
-          <div class="card-head">
-            <h2>News</h2>
-            <a id="wsj-link" class="wsj-link hidden" target="_blank" rel="noopener noreferrer"
-               data-tip="Opens WSJ's page for this ticker in your browser — full articles via your subscription. WSJ isn't shown inline (no public per-ticker feed).">Open in WSJ →</a>
-          </div>
-          <ul id="news-body" class="news-list"></ul>
-        </section>
-      </div>
+      <section class="card">
+        <div class="card-head"><h2>Upcoming Events</h2></div>
+        <div id="events-body" class="events-body"></div>
+      </section>
       </div><!-- /planner-view -->
 
       <div id="analysis-view" class="hidden">
@@ -131,6 +118,14 @@
             <span class="not-advice" data-tip="Runs the plan above against past price data from a chosen start date, to see how it would have played out. A backtest for learning — past results, not a prediction.">Backtest, not a prediction</span>
           </div>
           <div id="replay-body"></div>
+        </section>
+        <section class="card">
+          <div class="card-head">
+            <h2>News</h2>
+            <a class="wsj-link hidden" target="_blank" rel="noopener noreferrer"
+               data-tip="Opens WSJ's page for this ticker in your browser — full articles via your subscription.">Open in WSJ →</a>
+          </div>
+          <ul id="research-news" class="news-list"></ul>
         </section>
       </div>
 
