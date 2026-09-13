@@ -386,6 +386,7 @@ body {
   background: var(--warn-soft); padding: 3px 10px; border-radius: 999px;
   cursor: help; text-transform: uppercase; letter-spacing: 0.03em;
 }
+.plan-mode { margin-bottom: 14px; }
 
 /* ---------- Paper trading ---------- */
 .paper-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }

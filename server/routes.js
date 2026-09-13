@@ -119,6 +119,8 @@ router.get('/settings', wrap(async (_req, res) => {
     };
   }
   out.displayName = getSetting('DISPLAY_NAME') || '';
+  out.accountSize = getSetting('ACCOUNT_SIZE') || '';
+  out.riskPct = getSetting('RISK_PCT') || '';
   res.json(out);
 }));
 
@@ -128,6 +130,8 @@ router.post('/settings', wrap(async (req, res) => {
     if (typeof body[k] === 'string' && body[k].trim()) setSetting(k, body[k].trim());
   }
   if (typeof body.displayName === 'string') setSetting('DISPLAY_NAME', body.displayName.trim());
+  if (body.accountSize != null && String(body.accountSize).trim()) setSetting('ACCOUNT_SIZE', String(body.accountSize).trim());
+  if (body.riskPct != null && String(body.riskPct).trim()) setSetting('RISK_PCT', String(body.riskPct).trim());
   res.json({ ok: true });
 }));
 
