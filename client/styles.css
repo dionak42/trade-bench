@@ -424,6 +424,10 @@ body {
 }
 .replay-outcome.good { background: var(--good-soft); color: var(--good); }
 .replay-outcome.bad { background: var(--bad-soft); color: var(--bad); }
+.replay-levels {
+  background: var(--accent-soft); color: var(--text); border-radius: 8px;
+  padding: 10px 14px; font-size: 13.5px; margin-bottom: 14px;
+}
 
 /* ---------- Charts ---------- */
 .chart-box { width: 100%; overflow: hidden; }
