@@ -70,6 +70,7 @@ async function loadSymbol(sym) {
   state.symbol = sym;
   state.selected = null;
   $('#empty-state').classList.add('hidden');
+  $('#scan-panel').classList.add('hidden');
   $('#content').classList.remove('hidden');
   setRefreshStatus('Loading…');
 
@@ -551,6 +552,7 @@ async function loadWatchlist() {
   const { watchlist } = await api('/watchlist');
   state._watchlist = watchlist;
   renderWatchlist(watchlist);
+  renderScan();
 }
 function renderWatchlist(items) {
   $('#watchlist-body').innerHTML = items.map((w) => `
@@ -1158,6 +1160,73 @@ $('#settings-test').addEventListener('click', async () => {
     $('#settings-status').innerHTML = `<div class="settings-bad">Test failed: ${esc(err.message)}</div>`;
   }
 });
+
+// ---------- Watchlist momentum scan (home dashboard) ----------
+function dirBadge(d) {
+  if (d === 'rising') return '<span class="good">▲ rising</span>';
+  if (d === 'falling') return '<span class="bad">▼ falling</span>';
+  return '<span class="muted">▬ flat</span>';
+}
+
+function scanSignal(r) {
+  if (r.cross) {
+    const g = r.cross.type === 'golden';
+    return `<span class="${g ? 'good' : 'bad'}" style="font-weight:700">${g ? '⚡ Golden cross' : '🔻 Death cross'} · ${r.cross.daysAgo}d</span>`;
+  }
+  if (r.regime == null) return '<span class="muted">—</span>';
+  const near = r.gap != null && Math.abs(r.gap) < 0.04;
+  if (r.regime === 'golden') {
+    return near ? '<span class="warn">⚡ Golden · could flip</span>' : '<span class="good">⚡ Golden regime</span>';
+  }
+  return near ? '<span class="warn">🔻 Death · nearing golden</span>' : '<span class="bad">🔻 Death regime</span>';
+}
+
+async function renderScan() {
+  const panel = document.getElementById('scan-panel');
+  if (!panel) return;
+  if (state.symbol) { panel.classList.add('hidden'); return; }
+  const syms = (state._watchlist || []).map((w) => w.symbol);
+  if (!syms.length) { panel.innerHTML = ''; panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  if (!panel.innerHTML) panel.innerHTML = '<section class="card"><div class="loading">Scanning your watchlist…</div></section>';
+  try {
+    const { results } = await api(`/scan?symbols=${encodeURIComponent(syms.join(','))}`);
+    const rows = results.map((r) => r.error
+      ? `<tr><td class="scan-sym">${esc(r.symbol)}</td><td colspan="4" class="muted">no data</td></tr>`
+      : `<tr class="scan-row" data-symbol="${esc(r.symbol)}">
+          <td class="scan-sym">${esc(r.symbol)}</td>
+          <td>${money(r.price)}</td>
+          <td class="${r.trendLabel === 'Uptrend' ? 'good' : r.trendLabel === 'Downtrend' ? 'bad' : ''}">${r.trendLabel}</td>
+          <td>${r.rsi14 ?? '—'} ${dirBadge(r.direction)}</td>
+          <td>${scanSignal(r)}</td>
+        </tr>`).join('');
+    panel.innerHTML = `
+      <section class="card">
+        <div class="card-head"><h2>Watchlist Momentum Scan</h2>
+          <button id="scan-refresh" class="ghost-btn" type="button">↻ Refresh</button></div>
+        <div class="chain-scroll"><table class="chain-table scan-table">
+          <thead><tr><th>Symbol</th><th>Price</th><th>Trend</th><th>Momentum (RSI)</th><th>Signal</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+        <p class="hint">A signal is a cue to open that stock and decide — not an auto-trade. Click a row to research it.</p>
+      </section>`;
+    panel.querySelectorAll('.scan-row').forEach((tr) =>
+      tr.addEventListener('click', () => { $('#search-input').value = tr.dataset.symbol; loadSymbol(tr.dataset.symbol); }));
+    const rb = document.getElementById('scan-refresh');
+    if (rb) rb.addEventListener('click', renderScan);
+  } catch { /* keep prior content on error */ }
+}
+
+function goHome() {
+  state.symbol = null;
+  clearInterval(refreshTimer);
+  clearInterval(tickTimer);
+  $('#content').classList.add('hidden');
+  $('#empty-state').classList.remove('hidden');
+  setRefreshStatus('—');
+  loadWatchlist().catch(() => {});
+}
+$('#brand-home').addEventListener('click', goHome);
 
 // ---------- Public hooks (used by help.js / tour) ----------
 window.planner = {
