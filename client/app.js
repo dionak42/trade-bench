@@ -906,36 +906,41 @@ function renderReplay() {
         <label><span class="q" data-tip="The date you would have set the plan up. The replay walks daily bars forward from here.">Start date</span></label>
         <input id="replay-date" type="date" value="${start}" />
       </div>
-      <button class="primary-btn" id="replay-run" type="button">▶ Run replay on this plan</button>
+      <button class="primary-btn" id="replay-run" type="button">▶ Run replay</button>
     </div>
+    <p class="hint" style="margin:0 0 8px">Sets entry/target/stop from your system's rules (20-day support/resistance, ATR stop) as of the start date — a true, lookahead-free backtest. Uses your current sizing mode.</p>
     <div id="replay-result"></div>`;
   $('#replay-run').addEventListener('click', runReplayUI);
 }
 
 async function runReplayUI() {
-  const entry = val('plan-entry'), target = val('plan-target');
-  const stopPct = val('plan-stop'), capital = val('plan-capital');
-  const stop = round2(entry * (1 - stopPct / 100));
-  const shares = Math.floor(capital / entry) || 0;
   const startDate = $('#replay-date').value;
   const out = $('#replay-result');
-  out.innerHTML = '<div class="loading">Replaying against price history…</div>';
+  out.innerHTML = '<div class="loading">Replaying with system levels as of that date…</div>';
+  const body = { startDate, mode: state.sizingMode };
+  if (state.sizingMode === 'risk') {
+    body.accountSize = val('plan-account');
+    body.riskPct = val('plan-risk');
+  } else {
+    body.capital = val('plan-capital');
+  }
   try {
     const r = await api(`/replay/${state.symbol}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ startDate, entry, target, stop, shares }),
+      body: JSON.stringify(body),
     });
-    renderReplayResult(r, { entry, target, stop });
+    renderReplayResult(r);
   } catch (err) {
     out.innerHTML = `<div class="error-banner">${esc(err.message)}</div>`;
   }
 }
 
-function renderReplayResult(r, plan) {
+function renderReplayResult(r) {
   const out = $('#replay-result');
+  const levelsLine = `<div class="replay-levels">System plan <strong>as of ${r.asOf}</strong>: buy <strong>${money(r.entry)}</strong> · target <strong>${money(r.target)}</strong> · stop <strong>${money(r.stop)}</strong> · ${r.shares} shares</div>`;
   if (r.outcome === 'no_fill') {
-    out.innerHTML = `<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>`;
+    out.innerHTML = `${levelsLine}<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>`;
     return;
   }
   const map = {
@@ -946,9 +951,10 @@ function renderReplayResult(r, plan) {
   const m = map[r.outcome] || {};
   const pnlCls = r.pnl >= 0 ? 'good' : 'bad';
   out.innerHTML = `
+    ${levelsLine}
     <div class="replay-outcome ${m.cls}">${m.icon} ${m.label}</div>
     <div class="outputs">
-      ${outCell('Entry', `${money(r.entryPrice)} · ${r.entryDate}`)}
+      ${outCell('Filled at', `${money(r.entryPrice)} · ${r.entryDate}`)}
       ${outCell('Exit', `${money(r.exitPrice)} · ${r.exitDate}`)}
       ${outCell('Days held', r.daysHeld)}
       ${outCell('Shares', r.shares)}
@@ -958,7 +964,7 @@ function renderReplayResult(r, plan) {
       ${outCell('', '')}
     </div>
     <div id="replay-chart" class="chart-box"></div>
-    <p class="hint">Backtest of your plan: buy ${money(plan.entry)}, target ${money(plan.target)}, stop ${money(plan.stop)}. Past price action only — not a prediction, and it assumes a fixed stop.</p>`;
+    <p class="hint">Entry, target, and stop are set from the 20-day support/resistance and ATR stop <strong>as of ${r.asOf}</strong> — using only data up to that day, so there's no lookahead.</p>`;
   if (window.charts) window.charts.replayChart(document.getElementById('replay-chart'), r);
 }
 
