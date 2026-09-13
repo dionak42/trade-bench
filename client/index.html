@@ -37,6 +37,7 @@
       <div class="view-toggle" id="view-toggle">
         <button data-view="planner" class="active" type="button">📊 Options Planner</button>
         <button data-view="analysis" type="button">🔍 Analysis</button>
+        <button data-view="paper" type="button">📈 Paper</button>
       </div>
 
       <div id="planner-view">
@@ -113,6 +114,22 @@
             <span class="not-advice" data-tip="This lays out the math of a trade plan you design (entry, target, stop). It's a model for learning and running scenarios — not a recommendation to trade.">Model, not advice</span>
           </div>
           <div id="plan-builder"></div>
+        </section>
+      </div>
+
+      <div id="paper-view" class="hidden">
+        <div class="paper-head">
+          <span class="not-advice" style="color:var(--accent);background:var(--accent-soft)" data-tip="A simulated Alpaca paper account with fake money. Orders fill against real (delayed) market data. No real money is ever involved.">📈 Paper account — simulated, no real money</span>
+          <button id="paper-refresh" class="ghost-btn" type="button">↻ Refresh</button>
+        </div>
+        <div id="paper-account" class="scorecard"></div>
+        <section class="card">
+          <div class="card-head"><h2>Positions</h2></div>
+          <div id="paper-positions"></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><h2>Open Orders</h2></div>
+          <div id="paper-orders"></div>
         </section>
       </div>
     </div>
