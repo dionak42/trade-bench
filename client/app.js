@@ -12,7 +12,7 @@ const state = {
   selected: null,    // occSymbol
   lastUpdated: null,
   showTargetZone: true,
-  view: 'planner',   // 'planner' | 'analysis'
+  view: 'analysis',  // 'analysis' (Research) | 'planner' (Options) | 'paper'
   analysis: null,    // cached scorecard for the loaded symbol
 };
 
@@ -100,7 +100,7 @@ async function loadSymbol(sym) {
     wsj.classList.remove('hidden');
     selectDefaultContract();
     startAutoRefresh();
-    if (state.view === 'analysis') loadAnalysis();
+    switchView(state.view); // sync visible view (defaults to Research) + load its data
   } catch (err) {
     showError(err.message);
   }
@@ -642,6 +642,7 @@ async function loadAnalysis() {
   if (state.analysis) {
     renderScorecard(state.analysis);
     renderPlanBuilder(state.analysis);
+    renderReplay();
     return;
   }
   sc.innerHTML = '<div class="loading">Analyzing price history…</div>';
@@ -651,6 +652,7 @@ async function loadAnalysis() {
     state.analysis = a;
     renderScorecard(a);
     renderPlanBuilder(a);
+    renderReplay();
   } catch (err) {
     sc.innerHTML = `<div class="error-banner">Couldn’t analyze ${state.symbol}: ${err.message}</div>`;
   }
@@ -735,7 +737,7 @@ function computePlan() {
       <strong>Plan:</strong> set a buy limit at ${money(entry)}. If filled, sell part at
       ${money(target)} (+${pct(toTarget)}), then trail the rest with a ${stopPct}% stop.
       <br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the
-      Options Planner and sell a cash-secured put around that strike.</span>
+      Options tab and sell a cash-secured put around that strike.</span>
     </div>
     ${shares >= 1 && rr != null && state.symbol ? `
       <button class="primary-btn place-btn" id="plan-place">📈 Place as paper bracket order</button>
@@ -752,6 +754,68 @@ function computePlan() {
 }
 
 const round2 = (n) => Number(Number(n).toFixed(2));
+
+function renderReplay() {
+  const start = new Date(Date.now() - 180 * 86400000).toISOString().slice(0, 10);
+  $('#replay-body').innerHTML = `
+    <div class="replay-controls">
+      <div class="field" style="max-width:190px">
+        <label><span class="q" data-tip="The date you would have set the plan up. The replay walks daily bars forward from here.">Start date</span></label>
+        <input id="replay-date" type="date" value="${start}" />
+      </div>
+      <button class="primary-btn" id="replay-run" type="button">▶ Run replay on this plan</button>
+    </div>
+    <div id="replay-result"></div>`;
+  $('#replay-run').addEventListener('click', runReplayUI);
+}
+
+async function runReplayUI() {
+  const entry = val('plan-entry'), target = val('plan-target');
+  const stopPct = val('plan-stop'), capital = val('plan-capital');
+  const stop = round2(entry * (1 - stopPct / 100));
+  const shares = Math.floor(capital / entry) || 0;
+  const startDate = $('#replay-date').value;
+  const out = $('#replay-result');
+  out.innerHTML = '<div class="loading">Replaying against price history…</div>';
+  try {
+    const r = await api(`/replay/${state.symbol}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ startDate, entry, target, stop, shares }),
+    });
+    renderReplayResult(r, { entry, target, stop });
+  } catch (err) {
+    out.innerHTML = `<div class="error-banner">${esc(err.message)}</div>`;
+  }
+}
+
+function renderReplayResult(r, plan) {
+  const out = $('#replay-result');
+  if (r.outcome === 'no_fill') {
+    out.innerHTML = `<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>`;
+    return;
+  }
+  const map = {
+    target: { cls: 'good', icon: '🎯', label: 'Target hit' },
+    stopped: { cls: 'bad', icon: '🛑', label: 'Stopped out' },
+    open: { cls: '', icon: '⏳', label: 'Still open (marked to last close)' },
+  };
+  const m = map[r.outcome] || {};
+  const pnlCls = r.pnl >= 0 ? 'good' : 'bad';
+  out.innerHTML = `
+    <div class="replay-outcome ${m.cls}">${m.icon} ${m.label}</div>
+    <div class="outputs">
+      ${outCell('Entry', `${money(r.entryPrice)} · ${r.entryDate}`)}
+      ${outCell('Exit', `${money(r.exitPrice)} · ${r.exitDate}`)}
+      ${outCell('Days held', r.daysHeld)}
+      ${outCell('Shares', r.shares)}
+      ${outCell('P&L', `${r.pnl >= 0 ? '+' : ''}${money(r.pnl)}`, pnlCls)}
+      ${outCell('Return', pct(r.pnlPct), pnlCls)}
+      ${outCell('R multiple', r.rMultiple != null ? r.rMultiple.toFixed(2) + 'R' : '—', r.rMultiple >= 0 ? 'good' : 'bad', 'Multiples of your planned risk. +2R means you made twice what you risked.')}
+      ${outCell('', '')}
+    </div>
+    <p class="hint">Backtest of your plan: buy ${money(plan.entry)}, target ${money(plan.target)}, stop ${money(plan.stop)}. Past price action only — not a prediction, and it assumes a fixed stop.</p>`;
+}
 
 function switchView(v) {
   state.view = v;
@@ -798,7 +862,7 @@ function renderPaperAccount(a) {
 
 function renderPaperPositions(positions) {
   if (!positions.length) {
-    $('#paper-positions').innerHTML = '<div class="event-none">No open positions. Place a trade from the Analysis or Options Planner view.</div>';
+    $('#paper-positions').innerHTML = '<div class="event-none">No open positions. Place a trade from the Research or Options tab.</div>';
     return;
   }
   const rows = positions.map((p) => {
