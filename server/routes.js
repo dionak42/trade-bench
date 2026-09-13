@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { getUnderlyingPrice, getOptionsChain, getUpcomingDividend } from './alpaca.js';
 import { getNews, getNextEarnings, searchSymbols } from './finnhub.js';
 import { ivRankFor } from './ivrank.js';
-import { buildAnalysis } from './analysis.js';
+import { buildAnalysis, scanSymbol } from './analysis.js';
 import { runReplay } from './replay.js';
 import {
   getAccount, getPositions, getOrders, placeOrder, cancelOrder, closePosition,
@@ -63,6 +63,16 @@ router.get('/ivrank/:symbol', wrap(async (req, res) => {
   const price = req.query.price ? Number(req.query.price) : undefined;
   const data = await ivRankFor(symbol, price);
   res.json({ symbol, ...(data ?? { currentIv: null, rank: null, percentile: null, days: 0 }) });
+}));
+
+// Watchlist momentum scan: trend + momentum + cross across a list of tickers.
+router.get('/scan', wrap(async (req, res) => {
+  const symbols = String(req.query.symbols || '')
+    .split(',').map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 30);
+  const results = await Promise.all(
+    symbols.map((s) => scanSymbol(s).catch(() => ({ symbol: s, error: true })))
+  );
+  res.json({ results });
 }));
 
 // Technical scorecard + news sentiment (decision support, not advice).

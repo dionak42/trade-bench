@@ -388,6 +388,19 @@ body {
 }
 .plan-mode { margin-bottom: 14px; }
 
+/* Text-color utilities (used by the scan + cross labels). */
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+.warn { color: var(--warn); }
+.muted { color: var(--muted); }
+
+/* ---------- Watchlist momentum scan ---------- */
+.scan-panel { max-width: 1200px; margin: 0 auto; }
+.scan-table th, .scan-table td { text-align: left; padding: 11px 12px; font-size: 14px; }
+.scan-table .scan-sym { font-weight: 700; }
+.scan-row { cursor: pointer; }
+.scan-row:hover { background: var(--accent-soft); }
+
 /* ---------- Paper trading ---------- */
 .paper-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
 .place-btn { width: 100%; margin-top: 14px; padding: 12px; font-size: 15px; }
