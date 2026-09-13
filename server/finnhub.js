@@ -38,8 +38,10 @@ export async function searchSymbols(query) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Finnhub search failed (${res.status})`);
   const json = await res.json();
+  const seen = new Set();
   return (json?.result ?? [])
     .filter((r) => r.symbol && !r.symbol.includes('.') && /^[A-Z]{1,6}$/.test(r.symbol))
+    .filter((r) => (seen.has(r.symbol) ? false : (seen.add(r.symbol), true))) // one row per ticker
     .slice(0, 8)
     .map((r) => ({ symbol: r.symbol, description: r.description, type: r.type }));
 }
