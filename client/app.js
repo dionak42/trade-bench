@@ -14,6 +14,8 @@ const state = {
   showTargetZone: true,
   view: 'analysis',  // 'analysis' (Research) | 'planner' (Options) | 'paper'
   analysis: null,    // cached scorecard for the loaded symbol
+  sizingMode: 'risk', // 'risk' | 'capital'
+  settings: {},      // { accountSize, riskPct } cached from /settings
 };
 
 const REFRESH_MS = 60 * 1000;
@@ -750,9 +752,16 @@ function renderScorecard(a) {
       <div class="sc-sub">${m.label}${m.rsiChange != null ? ` · ${m.rsiChange >= 0 ? '+' : ''}${m.rsiChange.toFixed(0)} over ~1 wk` : ''}</div>
       ${spark}
     </div>`;
+  let crossNote = '';
+  if (t.cross) {
+    const g = t.cross.type === 'golden';
+    crossNote = `<br><span class="${g ? 'good' : 'bad'}" style="font-weight:700">${g ? '⚡ Golden' : '🔻 Death'} cross · ${t.cross.daysAgo}d ago</span>`;
+  } else if (t.regime) {
+    crossNote = `<br><span class="${t.regime === 'golden' ? 'good' : 'bad'}" style="font-weight:600">${t.regime === 'golden' ? '⚡ Golden-cross regime' : '🔻 Death-cross regime'}</span>`;
+  }
   $('#scorecard').innerHTML = `
     ${scoreCard('Trend', t.label,
-      `${t.priceVsSma50 >= 0 ? 'Above' : 'Below'} 50-day (${money(t.sma50)}), ${t.priceVsSma200 >= 0 ? 'above' : 'below'} 200-day (${money(t.sma200)})`,
+      `${t.priceVsSma50 >= 0 ? 'Above' : 'Below'} 50-day (${money(t.sma50)}), ${t.priceVsSma200 >= 0 ? 'above' : 'below'} 200-day (${money(t.sma200)})${crossNote}`,
       trendCls)}
     ${momentumCard}
     ${scoreCard('Volatility', v.atrPct != null ? '±' + pct(v.atrPct, 1) : '—',
@@ -765,17 +774,36 @@ function renderScorecard(a) {
 
 function renderPlanBuilder(a) {
   const l = a.levels, v = a.volatility;
-  const entry = l.support20.toFixed(2);
-  const target = l.resistance20.toFixed(2);
-  const stopPct = Math.max(2, Math.round((v.atrPct || 0.03) * 2 * 100)); // ~2× avg daily move
+  // Preserve any edits across re-renders (e.g. when switching sizing mode).
+  const cur = (id, dflt) => { const el = document.getElementById(id); return el && el.value !== '' ? el.value : dflt; };
+  const entry = cur('plan-entry', l.support20.toFixed(2));
+  const target = cur('plan-target', l.resistance20.toFixed(2));
+  const stopPct = cur('plan-stop', Math.max(2, Math.round((v.atrPct || 0.03) * 2 * 100)));
+  const acct = cur('plan-account', state.settings.accountSize || 10000);
+  const risk = cur('plan-risk', state.settings.riskPct || 1);
+  const cap = cur('plan-capital', state.settings.accountSize || 5000);
+  const mode = state.sizingMode;
+
+  const sizingInputs = mode === 'risk'
+    ? `${field('plan-account', 'Account size ($)', acct, 'The balance of the account you are trading. Save it in Settings so it pre-fills.')}
+       ${field('plan-risk', 'Risk per trade (%)', risk, 'How much of the account you are willing to lose if the stop is hit. 1% is a common, conservative rule — it decides your share count.')}`
+    : `${field('plan-capital', 'Capital ($)', cap, 'Dollars to deploy into this trade.')}`;
+
   $('#plan-builder').innerHTML = `
+    <div class="toggle plan-mode" id="sizing-toggle" role="tablist">
+      <button class="${mode === 'risk' ? 'active' : ''}" data-mode="risk" type="button">Risk-based sizing</button>
+      <button class="${mode === 'capital' ? 'active' : ''}" data-mode="capital" type="button">Fixed capital</button>
+    </div>
     <div class="calc-inputs">
       ${field('plan-entry', 'Entry (buy limit)', entry, 'The price you set your buy order at. A dip to here fills you — buying weakness. Defaults to 20-day support.')}
       ${field('plan-target', 'Profit target', target, 'Where you sell all or part of the position. Defaults to 20-day resistance.')}
       ${field('plan-stop', 'Trailing stop %', stopPct, 'How far below the peak the runner can fall before it sells. Defaults to ~2× the average daily move.')}
-      ${field('plan-capital', 'Capital ($)', 5000, 'Dollars to allocate to this trade.')}
+      ${sizingInputs}
     </div>
     <div id="plan-out"></div>`;
+
+  $('#sizing-toggle').querySelectorAll('button').forEach((b) =>
+    b.addEventListener('click', () => { state.sizingMode = b.dataset.mode; renderPlanBuilder(a); }));
   $('#plan-builder').querySelectorAll('input').forEach((inp) =>
     inp.addEventListener('input', computePlan));
   computePlan();
@@ -800,33 +828,53 @@ function drawPriceChart() {
 function computePlan() {
   const out = $('#plan-out');
   if (!out) return;
-  const entry = val('plan-entry'), target = val('plan-target');
-  const stopPct = val('plan-stop'), capital = val('plan-capital');
-  const shares = Math.floor(capital / entry) || 0;
+  const entry = val('plan-entry'), target = val('plan-target'), stopPct = val('plan-stop');
   const stopPrice = entry * (1 - stopPct / 100);
   const riskPS = entry - stopPrice;
   const rewardPS = target - entry;
   const rr = riskPS > 0 ? rewardPS / riskPS : null;
   const toTarget = (target - entry) / entry;
   const good = rr != null && rr >= 2;
+
+  // Size the position — either by risk budget, or by a fixed dollar amount.
+  const mode = state.sizingMode;
+  let shares = 0, capital = 0, accountSize = null, cappedByCash = false;
+  if (mode === 'risk') {
+    accountSize = val('plan-account');
+    const riskPct = val('plan-risk');
+    const riskBudget = accountSize * riskPct / 100;
+    shares = riskPS > 0 ? Math.floor(riskBudget / riskPS) : 0;
+    const maxByCash = entry > 0 ? Math.floor(accountSize / entry) : 0;
+    if (shares > maxByCash) { shares = maxByCash; cappedByCash = true; }
+  } else {
+    capital = val('plan-capital');
+    shares = entry > 0 ? Math.floor(capital / entry) || 0 : 0;
+  }
+  capital = shares * entry;
+  const dollarRisk = riskPS * shares;
+  const pctOfAcct = accountSize ? dollarRisk / accountSize : null;
+
   out.innerHTML = `
+    ${cappedByCash ? '<div class="calc-warning">⚠️ Sized down to fit your cash — at that risk %, the full size would cost more than the account holds.</div>' : ''}
     <div class="headline-return" style="background:${good ? 'var(--good-soft)' : 'var(--surface-alt)'}">
       <div class="big" style="color:${good ? 'var(--good)' : 'var(--text)'}">${rr != null ? rr.toFixed(2) + ' : 1' : '—'}</div>
       <div class="lbl">Reward-to-risk ratio</div>
     </div>
     <div class="outputs">
       ${outCell('Shares', shares)}
+      ${outCell('Capital deployed', money(capital))}
       ${outCell('Stop price', money(stopPrice), '', 'Entry minus the trailing-stop %.')}
-      ${outCell('Risk / share', money(riskPS), 'bad')}
-      ${outCell('Reward / share', money(rewardPS), rewardPS >= 0 ? 'good' : 'bad')}
-      ${outCell('$ at risk', money(riskPS * shares), 'bad', 'Loss if the stop is hit on the full position.')}
+      ${outCell('$ at risk', money(dollarRisk), 'bad', 'The most you lose if the stop is hit.')}
+      ${mode === 'risk'
+        ? outCell('% of account at risk', pctOfAcct != null ? pct(pctOfAcct) : '—', pctOfAcct != null && pctOfAcct > 0.02 ? 'bad' : 'good', 'Keep this small — 1–2% per trade is the discipline that protects capital you can’t replace.')
+        : outCell('Reward / share', money(rewardPS), rewardPS >= 0 ? 'good' : 'bad')}
       ${outCell('$ at target', money(rewardPS * shares), 'good', 'Gain if the target is hit on the full position.')}
       ${outCell('% to target', pct(toTarget))}
       ${outCell('% to stop', pct(-stopPct / 100))}
     </div>
     <div class="scenario">
-      <strong>Plan:</strong> set a buy limit at ${money(entry)}. If filled, sell part at
-      ${money(target)} (+${pct(toTarget)}), then trail the rest with a ${stopPct}% stop.
+      <strong>Plan:</strong> buy ${shares} share${shares === 1 ? '' : 's'} at ${money(entry)} (${money(capital)}). Sell part at
+      ${money(target)} (+${pct(toTarget)}), then trail the rest with a ${stopPct}% stop. Max loss ${money(dollarRisk)}${pctOfAcct != null ? ` — ${pct(pctOfAcct)} of the account` : ''}.
       <br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the
       Options tab and sell a cash-secured put around that strike.</span>
     </div>
@@ -840,7 +888,7 @@ function computePlan() {
       limit_price: round2(entry), time_in_force: 'gtc', order_class: 'bracket',
       take_profit: { limit_price: round2(target) },
       stop_loss: { stop_price: round2(stopPrice) },
-    }, `Place a paper BRACKET order:\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\n\nProceed? (simulated, no real money)`));
+    }, `Place a paper BRACKET order:\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\nMax loss: ${money(dollarRisk)}\n\nProceed? (simulated, no real money)`));
   }
   drawPriceChart();
 }
@@ -1046,6 +1094,8 @@ function setKeyPlaceholder(sel, st) {
 async function loadSettingsStatus() {
   const s = await api('/settings');
   $('#set-name').value = s.displayName || '';
+  $('#set-account').value = s.accountSize || '';
+  $('#set-risk').value = s.riskPct || '';
   setKeyPlaceholder('#set-alpaca-id', s.ALPACA_API_KEY_ID);
   setKeyPlaceholder('#set-alpaca-secret', s.ALPACA_API_SECRET_KEY);
   setKeyPlaceholder('#set-finnhub', s.FINNHUB_API_KEY);
@@ -1065,7 +1115,11 @@ $('#settings-overlay').addEventListener('click', (e) => {
 });
 
 $('#settings-save').addEventListener('click', async () => {
-  const body = { displayName: $('#set-name').value.trim() };
+  const body = {
+    displayName: $('#set-name').value.trim(),
+    accountSize: $('#set-account').value.trim(),
+    riskPct: $('#set-risk').value.trim(),
+  };
   const map = {
     ALPACA_API_KEY_ID: '#set-alpaca-id',
     ALPACA_API_SECRET_KEY: '#set-alpaca-secret',
@@ -1081,8 +1135,14 @@ $('#settings-save').addEventListener('click', async () => {
       body: JSON.stringify(body),
     });
     await loadSettingsStatus();
-    $('#settings-status').innerHTML = '<div class="settings-ok">✅ Saved. New keys take effect immediately.</div>';
-    if (state.symbol) { state.analysis = null; loadWatchlist().catch(() => {}); }
+    await refreshSettingsCache();
+    $('#settings-status').innerHTML = '<div class="settings-ok">✅ Saved. Takes effect immediately.</div>';
+    // Push the new account size / risk into the plan builder if it's open.
+    const acctEl = document.getElementById('plan-account');
+    if (acctEl && body.accountSize) acctEl.value = body.accountSize;
+    const riskEl = document.getElementById('plan-risk');
+    if (riskEl && body.riskPct) riskEl.value = body.riskPct;
+    if (document.getElementById('plan-out')) computePlan();
   } catch (err) {
     $('#settings-status').innerHTML = `<div class="settings-bad">Save failed: ${esc(err.message)}</div>`;
   }
@@ -1106,4 +1166,15 @@ window.planner = {
 };
 
 // ---------- Init ----------
+async function refreshSettingsCache() {
+  try {
+    const s = await api('/settings');
+    state.settings = {
+      accountSize: Number(s.accountSize) || null,
+      riskPct: Number(s.riskPct) || null,
+    };
+  } catch { /* leave defaults */ }
+}
+
 loadWatchlist().catch(() => {});
+refreshSettingsCache();
