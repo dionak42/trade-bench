@@ -1,11 +1,13 @@
 // Alpaca market-data client: underlying price + options chain with greeks.
 // Free "Basic" plan → iex feed for stocks, indicative feed for options (delayed).
+import { cfg } from './config.js';
+
 const DATA_BASE = 'https://data.alpaca.markets';
 
 function authHeaders() {
   return {
-    'APCA-API-KEY-ID': process.env.ALPACA_API_KEY_ID,
-    'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET_KEY,
+    'APCA-API-KEY-ID': cfg('ALPACA_API_KEY_ID'),
+    'APCA-API-SECRET-KEY': cfg('ALPACA_API_SECRET_KEY'),
   };
 }
 

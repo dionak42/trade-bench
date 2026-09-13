@@ -1,9 +1,11 @@
 // Finnhub client: company news + forward-looking earnings calendar.
 // Free tier covers both (confirmed against a live key).
+import { cfg } from './config.js';
+
 const BASE = 'https://finnhub.io/api/v1';
 
 function token() {
-  return process.env.FINNHUB_API_KEY;
+  return cfg('FINNHUB_API_KEY');
 }
 
 function ymd(date) {
@@ -27,6 +29,19 @@ export async function getNews(symbol, limit = 10) {
       url: n.url,
       datetime: n.datetime ? new Date(n.datetime * 1000).toISOString() : null,
     }));
+}
+
+// Symbol search by name or ticker. Prefers US symbols (no exchange suffix)
+// so the results are tradeable through Alpaca.
+export async function searchSymbols(query) {
+  const url = `${BASE}/search?q=${encodeURIComponent(query)}&token=${token()}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Finnhub search failed (${res.status})`);
+  const json = await res.json();
+  return (json?.result ?? [])
+    .filter((r) => r.symbol && !r.symbol.includes('.') && /^[A-Z]{1,6}$/.test(r.symbol))
+    .slice(0, 8)
+    .map((r) => ({ symbol: r.symbol, description: r.description, type: r.type }));
 }
 
 // Next scheduled earnings date (within ~4 months), plus estimates.

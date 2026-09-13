@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import apiRouter from './routes.js';
 import { snapshotWatchlistIv } from './ivrank.js';
+import { getSetting } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -19,12 +20,11 @@ app.use(express.static(join(__dirname, '..', 'client')));
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0'; // required for Tailscale access from another device
 
-// Fail fast with a clear message if keys are missing.
+// Warn (don't exit) if keys are missing — they can be added in Settings.
 const missing = ['ALPACA_API_KEY_ID', 'ALPACA_API_SECRET_KEY', 'FINNHUB_API_KEY']
-  .filter((k) => !process.env[k]);
+  .filter((k) => !process.env[k] && !getSetting(k));
 if (missing.length) {
-  console.error(`Missing env vars: ${missing.join(', ')}. Add them to .env`);
-  process.exit(1);
+  console.warn(`Missing keys: ${missing.join(', ')}. Add them in Settings (⚙) or .env.`);
 }
 
 app.listen(PORT, HOST, () => {
