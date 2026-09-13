@@ -106,8 +106,51 @@ export async function buildAnalysis(symbol) {
     else if (rsi14 <= 30) momentum = 'Oversold';
   }
 
+  // RSI over time, so you can see whether momentum is rising or falling.
+  const rsiAt = (end, period = 14) => {
+    if (end < period) return null;
+    let g = 0, l = 0;
+    for (let i = end - period + 1; i <= end; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff >= 0) g += diff; else l -= diff;
+    }
+    const ag = g / period, al = l / period;
+    if (al === 0) return 100;
+    return 100 - 100 / (1 + ag / al);
+  };
+  const rsiSeries = [];
+  for (let i = Math.max(14, closes.length - 30); i < closes.length; i++) {
+    const v = rsiAt(i);
+    if (v != null) rsiSeries.push(Number(v.toFixed(1)));
+  }
+  const rsiPrev = rsiAt(closes.length - 6); // ~1 week ago
+  const rsiChange = rsi14 != null && rsiPrev != null ? rsi14 - rsiPrev : null;
+  let rsiDirection = 'flat';
+  if (rsiChange != null) {
+    if (rsiChange > 2) rsiDirection = 'rising';
+    else if (rsiChange < -2) rsiDirection = 'falling';
+  }
+
   const news = await getNews(symbol, 15).catch(() => []);
   const sentiment = scoreSentiment(news.map((n) => n.headline || ''));
+
+  // Price series for the chart: last ~130 sessions with rolling MAs.
+  const smaAt = (arr, i, p) => {
+    if (i + 1 < p) return null;
+    let s = 0;
+    for (let k = i - p + 1; k <= i; k++) s += arr[k];
+    return s / p;
+  };
+  const N = Math.min(bars.length, 130);
+  const series = [];
+  for (let i = bars.length - N; i < bars.length; i++) {
+    series.push({
+      d: bars[i].t.slice(0, 10),
+      c: bars[i].c,
+      sma50: smaAt(closes, i, 50),
+      sma200: smaAt(closes, i, 200),
+    });
+  }
 
   return {
     symbol,
@@ -120,7 +163,10 @@ export async function buildAnalysis(symbol) {
       priceVsSma50: sma50 ? (price - sma50) / sma50 : null,
       priceVsSma200: sma200 ? (price - sma200) / sma200 : null,
     },
-    momentum: { label: momentum, rsi14 },
+    momentum: {
+      label: momentum, rsi14,
+      direction: rsiDirection, rsiChange, rsiSeries,
+    },
     volatility: {
       atr14,
       atrPct: atr14 ? atr14 / price : null, // ~expected daily move
@@ -134,5 +180,6 @@ export async function buildAnalysis(symbol) {
       pctFromHigh52: (price - high52) / high52,
     },
     sentiment,
+    series,
   };
 }

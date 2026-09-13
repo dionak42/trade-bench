@@ -394,6 +394,18 @@ body {
 .replay-outcome.good { background: var(--good-soft); color: var(--good); }
 .replay-outcome.bad { background: var(--bad-soft); color: var(--bad); }
 
+/* ---------- Charts ---------- */
+.chart-box { width: 100%; overflow: hidden; }
+.chart-box:empty { display: none; }
+.chart-svg { display: block; width: 100%; }
+#payoff-chart { margin-top: 14px; }
+#replay-chart { margin-top: 8px; }
+.sc-dir { font-size: 12px; font-weight: 700; }
+.sc-dir.good { color: var(--good); }
+.sc-dir.bad { color: var(--bad); }
+.sc-dir.muted { color: var(--muted); }
+.score-card .sparkline { margin-top: 8px; }
+
 /* ---------- Top-bar action buttons ---------- */
 .topbar-actions { display: flex; gap: 8px; }
 .ghost-btn {
