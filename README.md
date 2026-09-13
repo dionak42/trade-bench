@@ -98,6 +98,34 @@ pm2 list                     # status
   same URL. (Her device must be connected to Tailscale.)
 - If macOS pops up "allow incoming connections," click **Allow** so the port is reachable.
 
+## Use it like an app on your phone (Add to Home Screen)
+
+You don't need the App Store or a native app — Trade Bench can live on your home screen as a
+full-screen icon, over Tailscale. It's the same web app, just launched from an icon.
+
+**Prerequisite:** Tailscale is installed and connected on the phone (same tailnet as the Mac mini),
+so the app URL is reachable.
+
+**iPhone / iPad (Safari):**
+1. Open the app URL (the Tailscale IP or MagicDNS name) in **Safari**.
+2. Tap the **Share** button → **Add to Home Screen** → **Add**.
+3. Tap the new icon — Trade Bench opens full-screen, like a native app.
+
+**Android (Chrome) — an idea to try; not yet tested:**
+1. Open the app URL in **Chrome**.
+2. Tap the **⋮ menu** → **Add to Home screen** (or **Install app** if offered) → **Add**.
+3. Tap the icon to launch it.
+
+> ⚠️ The Android steps haven't been tested on a real device yet — they're the standard Chrome
+> "Add to Home screen" flow and should work, but treat them as an experiment to try, not a
+> guaranteed recipe.
+
+**Desktop:** in Chrome, use the **Install** icon in the address bar (or ⋮ → **Install Trade Bench**)
+for the same app-like, full-screen launch. Any browser can also just bookmark the URL.
+
+_(A web app manifest + icon would make the home-screen icon and full-screen mode more polished — a
+small future enhancement.)_
+
 ## Data notes
 
 - The free data tier is **~15-minute delayed** — numbers track a delayed feed, not
