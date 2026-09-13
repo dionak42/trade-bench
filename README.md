@@ -98,6 +98,19 @@ pm2 list                     # status
   same URL. (Her device must be connected to Tailscale.)
 - If macOS pops up "allow incoming connections," click **Allow** so the port is reachable.
 
+**Why Tailscale is the access approach (and *not* a public web app):** Tailscale is a private,
+encrypted network only your devices can join, so it *is* the security boundary. The app has no
+login and has endpoints that place (paper) trades, so exposing it to the public internet would mean
+first building auth, HTTPS, and hardening — a lot of work to get back to the safety Tailscale gives
+for free. Keep it tailnet-only. The raw IP works fine; the two items below are purely optional
+niceties, not needed:
+
+- **MagicDNS (optional):** turn it on in the Tailscale admin console to reach the app at a friendly
+  hostname (e.g. `http://mac-mini.<your-tailnet>.ts.net:3000`) instead of the IP.
+- **Tailscale Serve (optional):** puts HTTPS in front of the app at `https://…ts.net` (valid cert,
+  no port number, still tailnet-only). Use `serve`, **not** `funnel` — `funnel` would expose it
+  publicly, which you don't want.
+
 ## Use it like an app on your phone (Add to Home Screen)
 
 You don't need the App Store or a native app — Trade Bench can live on your home screen as a
