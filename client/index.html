@@ -10,13 +10,15 @@
   <header class="topbar">
     <div class="brand">🛠️ Trade Bench</div>
     <form id="search-form" class="search">
-      <input id="search-input" type="text" placeholder="Ticker (e.g. NVDA)"
-             autocomplete="off" spellcheck="false" aria-label="Ticker symbol" />
+      <input id="search-input" type="text" placeholder="Ticker or name (e.g. NVDA, Bitcoin)"
+             autocomplete="off" spellcheck="false" aria-label="Ticker or company name" />
       <button type="submit">Load</button>
+      <div id="search-results" class="search-results hidden"></div>
     </form>
     <div class="topbar-actions">
       <button id="tour-btn" class="ghost-btn" type="button" title="Take a guided tour">Tour</button>
       <button id="help-btn" class="ghost-btn" type="button" title="How to use this app">? Help</button>
+      <button id="settings-btn" class="ghost-btn" type="button" title="Settings (API keys)">⚙</button>
     </div>
     <div id="refresh-status" class="refresh-status" title="Data auto-refreshes in the background">—</div>
   </header>
@@ -169,6 +171,7 @@
       <div class="modal-tabs" id="help-tabs">
         <button class="active" data-tab="start">Quick Start</button>
         <button data-tab="course">📚 Course</button>
+        <button data-tab="research">Research</button>
         <button data-tab="cc">Covered Calls</button>
         <button data-tab="csp">Cash-Secured Puts</button>
         <button data-tab="chain">Reading the Chain</button>
@@ -177,6 +180,35 @@
       <div class="modal-body" id="help-body"></div>
       <div class="modal-foot">
         <button id="help-tour" class="primary-btn">▶ Take the guided tour</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settings-overlay" class="modal-overlay hidden">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-head">
+        <h2 id="settings-title">Settings</h2>
+        <button id="settings-close" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>Your API keys stay on this machine — saved locally and used only to reach Alpaca and Finnhub.
+          Leave a field blank to keep the current value.
+          <a href="https://app.alpaca.markets" target="_blank" rel="noopener noreferrer">Get Alpaca keys</a> ·
+          <a href="https://finnhub.io/dashboard" target="_blank" rel="noopener noreferrer">Get a Finnhub key</a>.</p>
+        <div class="field"><label for="set-name">Display name (optional)</label>
+          <input id="set-name" type="text" autocomplete="off" /></div>
+        <div class="field"><label for="set-alpaca-id">Alpaca API Key ID</label>
+          <input id="set-alpaca-id" type="text" autocomplete="off" spellcheck="false" /></div>
+        <div class="field"><label for="set-alpaca-secret">Alpaca Secret Key</label>
+          <input id="set-alpaca-secret" type="password" autocomplete="off" /></div>
+        <div class="field"><label for="set-finnhub">Finnhub API Key</label>
+          <input id="set-finnhub" type="password" autocomplete="off" /></div>
+        <div id="settings-status"></div>
+      </div>
+      <div class="modal-foot" style="justify-content:space-between">
+        <button id="settings-test" class="ghost-btn" type="button">Test connection</button>
+        <button id="settings-save" class="primary-btn" type="button">Save</button>
       </div>
     </div>
   </div>

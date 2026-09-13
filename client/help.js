@@ -3,30 +3,59 @@
 // ============ Help modal content ============
 const HELP = {
   start: `
-    <h3>What this app is for</h3>
-    <p>Two decisions: selling <span class="term">covered calls</span> (income on shares you
-    already own) and selling <span class="term">cash-secured puts</span> (getting paid to
-    maybe buy a stock at a lower price). It pulls a live options chain, does the return math,
-    and flags the risks so you can compare choices fast.</p>
+    <h3>What Trade Bench is for</h3>
+    <p>Research a stock, plan a trade, practice it, and handle the options side — all in one
+    place. Everything is organized into <strong>three views</strong> for whatever ticker you load.</p>
 
-    <h3>Three steps to your first plan</h3>
+    <h3>Load any ticker</h3>
+    <p>Type a symbol <em>or a company name</em> (even <code>Bitcoin</code>) in the search box and
+    pick from the suggestions.</p>
+
+    <h3>The three views</h3>
     <ul>
-      <li><strong>1. Load a ticker.</strong> Type a symbol (e.g. <code>NVDA</code>) up top and press Load.</li>
-      <li><strong>2. Pick the calculator.</strong> <em>Covered Call</em> if you own the shares;
-      <em>Cash-Secured Put</em> if you'd like to buy the stock cheaper.</li>
-      <li><strong>3. Click a strike</strong> in the chain. Everything auto-fills and the
-      annualized return appears instantly.</li>
+      <li><strong>🔍 Research</strong> — a scorecard (trend, momentum, volatility, support/
+      resistance, news), a price chart, a trade-plan builder, and historical replay. Your home
+      base for stock decisions.</li>
+      <li><strong>📊 Options</strong> — covered calls and cash-secured puts off a live options
+      chain, with a payoff diagram.</li>
+      <li><strong>📈 Paper</strong> — place any plan as a simulated Alpaca paper order (no real
+      money) and track positions and P&L.</li>
     </ul>
 
-    <div class="tip">💡 The big green number is <strong>annualized return</strong>. That's the
-    one figure that lets you compare a 30-day trade against a 45-day one, or one ticker against
-    another, on equal footing.</div>
+    <div class="tip">💡 The big green numbers — <strong>reward-to-risk</strong> on a stock plan
+    and <strong>annualized return</strong> on an option — are what let you compare choices fairly.</div>
 
-    <h3>Your main risk gauge: the "Δ / Prob" column</h3>
-    <p>Delta doubles as the rough <strong>probability the option finishes in-the-money</strong> —
-    i.e. the chance your shares get called away (calls) or you get assigned the stock (puts).
-    A strike showing <code>30%</code> ≈ 30% odds of that happening. Lower = safer but less
-    premium; higher = more premium but more likely to trigger.</p>`,
+    <h3>Your keys</h3>
+    <p>Add your own Alpaca and Finnhub API keys anytime under <strong>⚙ Settings</strong>. They
+    stay on your machine.</p>`,
+
+  research: `
+    <h3>The Research view</h3>
+    <p>Everything you need to size up a stock and plan a buy.</p>
+
+    <h3>Scorecard</h3>
+    <dl>
+      <dt>Trend</dt><dd>Price vs the 50- and 200-day moving averages — up, down, or sideways.</dd>
+      <dt>Momentum (RSI)</dt><dd>The current RSI <em>plus a sparkline and a rising/falling
+      arrow</em>, so you can see whether momentum is growing or fading — not just where it sits.</dd>
+      <dt>Volatility</dt><dd>Average daily move (ATR) as a %. Bigger = wider swings.</dd>
+      <dt>Support / Resistance</dt><dd>Recent 20-day floor and ceiling, plus the 52-week range.</dd>
+      <dt>News sentiment</dt><dd>A quick positive/negative lean from recent headlines.</dd>
+    </dl>
+
+    <h3>Price &amp; Plan chart</h3>
+    <p>The price line with moving averages and your entry / target / stop drawn as levels — so you
+    can see whether your entry sits near support and your target is realistic.</p>
+
+    <h3>Trade Plan Builder</h3>
+    <p>Enter a buy limit, a profit target, and a trailing-stop %. It computes shares, risk, reward,
+    and the reward-to-risk ratio, and a finished plan can be placed as a paper bracket order.</p>
+    <div class="tip">💡 Aim for a reward-to-risk around <strong>2:1 or better</strong> — you stand
+    to make at least twice what you're risking.</div>
+
+    <h3>Historical Replay</h3>
+    <p>Pick a past start date and replay your plan against real historical prices — did it hit the
+    target, get stopped out, and in how many days? A backtest for <em>learning</em>, not a prediction.</p>`,
 
   cc: `
     <h3>Covered Calls — income on shares you own</h3>
@@ -307,6 +336,62 @@ const COURSE = [
       the <strong>📚 Course</strong> tab, and lean on the hovers and Glossary while you practice. Go
       load a ticker and try a plan — nothing beats hands-on.</div>`,
   },
+  {
+    nav: 'Reading the scorecard',
+    html: `
+      <h3>Lesson 9 — Reading the Research scorecard</h3>
+      <p>The <strong>🔍 Research</strong> view sizes up a stock at a glance with five cards:</p>
+      <dl>
+        <dt>Trend</dt><dd>Is price above or below its 50- and 200-day averages? Above both = uptrend.</dd>
+        <dt>Momentum (RSI)</dt><dd>The number tells you <em>where</em> momentum is (over 70 hot,
+        under 30 cold). The <strong>sparkline and arrow</strong> tell you which way it's
+        <em>heading</em> — rising or falling. Both matter: RSI 50 rising is very different from RSI 50 falling.</dd>
+        <dt>Volatility</dt><dd>The typical daily move. Higher = bigger swings, so size positions smaller.</dd>
+        <dt>Support / Resistance</dt><dd>The recent floor and ceiling — natural spots to buy near
+        (support) or take profit near (resistance).</dd>
+        <dt>News sentiment</dt><dd>A quick read of the headline mood.</dd>
+      </dl>
+      <div class="do">✍️ <strong>Try it:</strong> Load a stock, open Research, and read the five
+      cards top to bottom. In one sentence: is this trending up with rising momentum, or fading?</div>`,
+  },
+  {
+    nav: 'Plan & replay a trade',
+    html: `
+      <h3>Lesson 10 — Planning and replaying a stock trade</h3>
+      <p>The <strong>Trade Plan Builder</strong> models a disciplined swing trade: buy on a dip,
+      take profit at a target, protect the rest with a trailing stop.</p>
+      <ul>
+        <li><strong>Entry</strong> — a buy limit, usually near support. A dip fills you.</li>
+        <li><strong>Target</strong> — where you take profit, often near resistance.</li>
+        <li><strong>Trailing stop</strong> — how far the runner can fall before it sells.</li>
+      </ul>
+      <p>Watch the <strong>reward-to-risk</strong>: 2:1 means the target is twice as far as the
+      stop. The price chart draws all three levels so you can eyeball whether the plan makes sense.</p>
+      <h3 style="font-size:14px">Then replay it</h3>
+      <p>Historical Replay runs that exact plan against past prices from a date you choose, and
+      tells you what would have happened. Try a few start dates to build intuition — fast, no waiting weeks.</p>
+      <div class="do">✍️ <strong>Try it:</strong> Build a plan, then replay it from a few months
+      back. Did it fill? Hit target or stop? How many days did it take?</div>`,
+  },
+  {
+    nav: 'Practice with paper',
+    html: `
+      <h3>Lesson 11 — Practice with paper trading</h3>
+      <p>The <strong>📈 Paper</strong> view is a simulated $100k brokerage account (Alpaca) — real
+      order mechanics, fake money. Nothing here risks a cent.</p>
+      <ul>
+        <li>From a stock plan, hit <strong>Place as paper bracket order</strong> — entry, target,
+        and stop go in as one linked order.</li>
+        <li>From the Options calculator, hit <strong>Paper trade this</strong> to sell a covered
+        call or cash-secured put.</li>
+        <li>The Paper view tracks your positions, open orders, and profit/loss.</li>
+      </ul>
+      <p>Because fills use delayed data, treat it as practice for <em>designing and managing</em>
+      trades, not split-second timing.</p>
+      <div class="tip">🎓 That's the full loop: research a stock, plan a trade, replay it on
+      history, practice it in paper — and run covered calls / puts the same way. Revisit any lesson
+      from the 📚 Course tab.</div>`,
+  },
 ];
 
 // ============ Modal wiring ============
@@ -361,19 +446,15 @@ document.getElementById('tour-btn').addEventListener('click', () => startTour())
 
 // ============ Guided tour ============
 const TOUR = [
-  { sel: '#search-form', text: '<strong>Start here.</strong> Type a ticker symbol and press Load to pull its price, options chain, events, and news.' },
-  { sel: '#ticker-header', text: 'The <strong>current price</strong> and key context sit here. Data is delayed ~15 minutes on the free tier and auto-refreshes every 60s.' },
-  { sel: '#ticker-header .badges', text: 'Quick-glance badges: the <strong>IV level</strong>, and any <strong>earnings or ex-dividend</strong> coming up — your scheduled-risk radar.' },
-  { sel: '#type-toggle', text: 'Switch the chain between <strong>call</strong> strikes and <strong>put</strong> strikes.' },
-  { sel: '#chain-body tr.atm', text: 'The <strong>● blue dot</strong> marks the <strong>at-the-money</strong> strike — closest to today’s price. Click <em>any</em> row to load it into the calculator.' },
-  { sel: '.chain-table thead th:nth-child(3)', text: 'Your main risk gauge: <strong>delta ≈ the probability</strong> the option finishes in-the-money. Lower is safer, higher pays more.' },
-  { sel: '.chain-table thead th:nth-child(5)', text: 'The <strong>spread</strong>. Red means wide/illiquid — you’ll get a worse fill, so prefer tight spreads.' },
-  { sel: '#calc-toggle', text: '<strong>Covered Call</strong> for income on shares you own; <strong>Cash-Secured Put</strong> to get paid to maybe buy the stock cheaper.' },
-  { sel: '.headline-return', text: 'The headline: <strong>annualized return</strong>. This is what lets you compare strikes and expirations fairly.' },
-  { sel: '.outputs', text: 'The full breakdown — breakeven, downside protection, assignment probability, and the exact if-assigned scenario below.' },
-  { sel: '#events-body', text: '<strong>Upcoming events.</strong> A chain row lights up ⚠️ when one of these falls before that option expires.' },
-  { sel: '#news-body', text: 'Recent <strong>headlines</strong> — a quick sanity check before you commit to a trade.' },
-  { sel: '.watchlist-card', text: '<strong>Shared watchlist.</strong> Save tickers here and you both see the same list. That’s the tour — press ? Help anytime.' },
+  { sel: '#search-form', text: '<strong>Start here.</strong> Type a ticker <em>or a company name</em> (even "Bitcoin") and pick from the suggestions.' },
+  { sel: '#view-toggle', text: 'Three modes per ticker: <strong>🔍 Research</strong> (analyze the stock + plan a trade), <strong>📊 Options</strong> (covered calls / cash-secured puts), and <strong>📈 Paper</strong> (practice trades with fake money). You start on Research.' },
+  { sel: '#ticker-header', text: 'Price and key context — IV, upcoming earnings and dividends. Data is delayed ~15 min and auto-refreshes.' },
+  { sel: '#scorecard', text: 'The <strong>scorecard</strong>: trend, momentum (with an <strong>RSI sparkline</strong> so you can see whether it’s rising or falling), volatility, support/resistance, and news sentiment.' },
+  { sel: '#price-chart', text: 'Your <strong>price chart</strong> with the 50/200-day moving averages and your entry/target/stop levels drawn on it — the plan made visual.' },
+  { sel: '#plan-builder', text: 'Build a <strong>trade plan</strong>: entry, profit target, trailing stop. It computes shares, risk, reward, and reward-to-risk — and can place it as a paper order.' },
+  { sel: '#replay-body', text: '<strong>Historical replay</strong>: run the plan against past prices to see how it would have played out — learn without waiting weeks.' },
+  { sel: '.watchlist-card', text: '<strong>Shared watchlist</strong> — saved tickers you both see. Click one to load it.' },
+  { sel: '#settings-btn', text: '<strong>Settings</strong> — add your own Alpaca & Finnhub API keys here. Press <strong>? Help</strong> anytime for the full guide and the 📚 Course.' },
 ];
 
 let tourIdx = 0;
@@ -389,9 +470,9 @@ async function ensureLoadedForTour() {
   const input = document.getElementById('search-input');
   input.value = 'AAPL';
   await window.planner.loadSymbol('AAPL');
-  // Wait for the chain to render.
-  for (let i = 0; i < 30; i++) {
-    if (document.querySelector('#chain-body tr.atm')) break;
+  // Wait for the Research view (scorecard + charts) to render.
+  for (let i = 0; i < 40; i++) {
+    if (document.querySelector('#scorecard .score-card')) break;
     await new Promise((r) => setTimeout(r, 100));
   }
 }

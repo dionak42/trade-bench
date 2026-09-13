@@ -71,7 +71,9 @@ function scoreSentiment(headlines) {
 
 // ---- Assemble the scorecard ----
 export async function buildAnalysis(symbol) {
-  const bars = await getDailyBars(symbol);
+  // ~600 calendar days (~410 trading) so the 200-day MA has enough history to
+  // span the whole 130-session chart window, not just its right-hand end.
+  const bars = await getDailyBars(symbol, 600);
   if (bars.length < 30) {
     throw new Error(`Not enough price history for ${symbol}`);
   }
