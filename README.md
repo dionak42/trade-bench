@@ -45,7 +45,10 @@ reachable by two people over Tailscale — no login, no public internet exposure
 
 ## Setup
 
-1. **Install dependencies**
+> **New here? The fastest path is [`SETUP.md`](SETUP.md)** — clone, run `npm run setup`, add your
+> keys (in the app or `.env`), `npm start`. The steps below are the same thing in more detail.
+
+1. **Install dependencies** (or just run `npm run setup`, which does this plus scaffolds `.env`)
    ```bash
    npm install
    ```
