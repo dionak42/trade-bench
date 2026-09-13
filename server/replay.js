@@ -41,10 +41,14 @@ export async function runReplay(symbol, { startDate, entry, target, stop, shares
   }
 
   // 2) Walk forward until the target or the stop is hit.
-  const finish = (outcome, exitPrice, bar) => {
+  const finish = (outcome, exitPrice, exitIdx) => {
+    const bar = window[exitIdx];
     const exitDate = bar.t.slice(0, 10);
     const pnlPerShare = exitPrice - entryPrice;
     const rMultiple = entry - stop !== 0 ? pnlPerShare / (entry - stop) : null;
+    // Price path from entry to exit, for the replay chart.
+    const path = window.slice(entryIdx, exitIdx + 1)
+      .map((b) => ({ d: b.t.slice(0, 10), c: b.c }));
     return {
       symbol, outcome,
       entryDate, entryPrice: Number(entryPrice.toFixed(2)),
@@ -54,27 +58,26 @@ export async function runReplay(symbol, { startDate, entry, target, stop, shares
       pnl: Number((pnlPerShare * shares).toFixed(2)),
       pnlPct: entryPrice ? pnlPerShare / entryPrice : null,
       rMultiple,
+      entry, target, stop, // plan levels for the chart overlay
+      path,
     };
   };
 
   for (let i = entryIdx + 1; i < window.length; i++) {
     const b = window[i];
-    const hitStop = b.l <= stop;
-    const hitTarget = b.h >= target;
     // If both happen in one bar, assume the stop hit first (conservative).
-    if (hitStop) {
+    if (b.l <= stop) {
       const px = b.o < stop ? b.o : stop; // gap-down fills worse
-      return finish('stopped', px, b);
+      return finish('stopped', px, i);
     }
-    if (hitTarget) {
+    if (b.h >= target) {
       const px = b.o > target ? b.o : target; // gap-up fills better
-      return finish('target', px, b);
+      return finish('target', px, i);
     }
   }
 
   // 3) Never resolved — still open, marked to the last close.
-  const last = window[window.length - 1];
-  const res = finish('open', last.c, last);
+  const res = finish('open', window[window.length - 1].c, window.length - 1);
   res.outcome = 'open';
   return res;
 }
