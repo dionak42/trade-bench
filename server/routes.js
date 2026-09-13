@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { getUnderlyingPrice, getOptionsChain, getUpcomingDividend } from './alpaca.js';
 import { getNews, getNextEarnings } from './finnhub.js';
 import { ivRankFor } from './ivrank.js';
+import { buildAnalysis } from './analysis.js';
 import { listWatchlist, addWatchlist, removeWatchlist } from './db.js';
 
 const router = Router();
@@ -48,6 +49,12 @@ router.get('/ivrank/:symbol', wrap(async (req, res) => {
   const price = req.query.price ? Number(req.query.price) : undefined;
   const data = await ivRankFor(symbol, price);
   res.json({ symbol, ...(data ?? { currentIv: null, rank: null, percentile: null, days: 0 }) });
+}));
+
+// Technical scorecard + news sentiment (decision support, not advice).
+router.get('/analysis/:symbol', wrap(async (req, res) => {
+  const data = await buildAnalysis(req.params.symbol.toUpperCase());
+  res.json(data);
 }));
 
 // Shared watchlist CRUD.

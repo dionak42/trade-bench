@@ -34,6 +34,12 @@
       <!-- Price + events header strip -->
       <section id="ticker-header" class="ticker-header"></section>
 
+      <div class="view-toggle" id="view-toggle">
+        <button data-view="planner" class="active" type="button">📊 Options Planner</button>
+        <button data-view="analysis" type="button">🔍 Analysis</button>
+      </div>
+
+      <div id="planner-view">
       <div class="grid">
         <!-- Options chain -->
         <section class="card chain-card">
@@ -95,6 +101,18 @@
                data-tip="Opens WSJ's page for this ticker in your browser — full articles via your subscription. WSJ isn't shown inline (no public per-ticker feed).">Open in WSJ →</a>
           </div>
           <ul id="news-body" class="news-list"></ul>
+        </section>
+      </div>
+      </div><!-- /planner-view -->
+
+      <div id="analysis-view" class="hidden">
+        <div id="scorecard" class="scorecard"></div>
+        <section class="card">
+          <div class="card-head">
+            <h2>Trade Plan Builder</h2>
+            <span class="not-advice" data-tip="This lays out the math of a trade plan you design (entry, target, stop). It's a model for learning and running scenarios — not a recommendation to trade.">Model, not advice</span>
+          </div>
+          <div id="plan-builder"></div>
         </section>
       </div>
     </div>
