@@ -446,6 +446,23 @@ function compute() {
   }
   const optBtn = document.getElementById('opt-place');
   if (optBtn) optBtn.addEventListener('click', placeOptionPaper);
+  drawPayoff();
+}
+
+function drawPayoff() {
+  const el = document.getElementById('payoff-chart');
+  if (!el || !window.charts) return;
+  if (state.calcType === 'cc') {
+    window.charts.payoffChart(el, {
+      kind: 'cc', strike: val('cc-strike'), premium: val('cc-premium'),
+      current: val('cc-price'), contracts: Math.floor(val('cc-shares') / 100),
+    });
+  } else {
+    window.charts.payoffChart(el, {
+      kind: 'csp', strike: val('csp-strike'), premium: val('csp-premium'),
+      current: val('csp-price'), contracts: Math.floor(val('csp-contracts')),
+    });
+  }
 }
 
 function placeOptionPaper() {
@@ -672,14 +689,22 @@ function renderScorecard(a) {
   const trendCls = t.label === 'Uptrend' ? 'good' : t.label === 'Downtrend' ? 'bad' : '';
   const rsiCls = m.label === 'Oversold' ? 'good' : m.label === 'Overbought' ? 'warn' : '';
   const sentCls = s.label === 'Positive' ? 'good' : s.label === 'Negative' ? 'bad' : '';
-  const rsiNote = m.label === 'Overbought' ? ' — may be extended'
-    : m.label === 'Oversold' ? ' — may be due for a bounce' : ' — mid-range';
+  const dir = m.direction || 'flat';
+  const dirTxt = dir === 'rising' ? '▲ rising' : dir === 'falling' ? '▼ falling' : '▬ flat';
+  const dirCls = dir === 'rising' ? 'good' : dir === 'falling' ? 'bad' : 'muted';
+  const spark = window.charts ? window.charts.rsiSparkline(m.rsiSeries, dir) : '';
+  const momentumCard = `
+    <div class="score-card">
+      <div class="sc-title">Momentum (RSI)</div>
+      <div class="sc-value ${rsiCls}">${m.rsi14 != null ? m.rsi14.toFixed(0) : '—'} <span class="sc-dir ${dirCls}">${dirTxt}</span></div>
+      <div class="sc-sub">${m.label}${m.rsiChange != null ? ` · ${m.rsiChange >= 0 ? '+' : ''}${m.rsiChange.toFixed(0)} over ~1 wk` : ''}</div>
+      ${spark}
+    </div>`;
   $('#scorecard').innerHTML = `
     ${scoreCard('Trend', t.label,
       `${t.priceVsSma50 >= 0 ? 'Above' : 'Below'} 50-day (${money(t.sma50)}), ${t.priceVsSma200 >= 0 ? 'above' : 'below'} 200-day (${money(t.sma200)})`,
       trendCls)}
-    ${scoreCard('Momentum (RSI)', m.rsi14 != null ? m.rsi14.toFixed(0) : '—',
-      m.label + rsiNote, rsiCls)}
+    ${momentumCard}
     ${scoreCard('Volatility', v.atrPct != null ? '±' + pct(v.atrPct, 1) : '—',
       v.atr14 != null ? `~${money(v.atr14)} average daily move` : '', '')}
     ${scoreCard('Support / Resistance', `${money(l.support20)} / ${money(l.resistance20)}`,
@@ -704,6 +729,22 @@ function renderPlanBuilder(a) {
   $('#plan-builder').querySelectorAll('input').forEach((inp) =>
     inp.addEventListener('input', computePlan));
   computePlan();
+  drawPriceChart();
+}
+
+function drawPriceChart() {
+  if (!state.analysis || !window.charts) return;
+  const el = document.getElementById('price-chart');
+  if (!el) return;
+  const entry = val('plan-entry');
+  const stopPct = val('plan-stop');
+  window.charts.priceChart(el, {
+    series: state.analysis.series,
+    entry,
+    target: val('plan-target'),
+    stop: Number.isFinite(entry) && Number.isFinite(stopPct) ? entry * (1 - stopPct / 100) : null,
+    current: state.analysis.price,
+  });
 }
 
 function computePlan() {
@@ -751,6 +792,7 @@ function computePlan() {
       stop_loss: { stop_price: round2(stopPrice) },
     }, `Place a paper BRACKET order:\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\n\nProceed? (simulated, no real money)`));
   }
+  drawPriceChart();
 }
 
 const round2 = (n) => Number(Number(n).toFixed(2));
@@ -814,7 +856,9 @@ function renderReplayResult(r, plan) {
       ${outCell('R multiple', r.rMultiple != null ? r.rMultiple.toFixed(2) + 'R' : '—', r.rMultiple >= 0 ? 'good' : 'bad', 'Multiples of your planned risk. +2R means you made twice what you risked.')}
       ${outCell('', '')}
     </div>
+    <div id="replay-chart" class="chart-box"></div>
     <p class="hint">Backtest of your plan: buy ${money(plan.entry)}, target ${money(plan.target)}, stop ${money(plan.stop)}. Past price action only — not a prediction, and it assumes a fixed stop.</p>`;
+  if (window.charts) window.charts.replayChart(document.getElementById('replay-chart'), r);
 }
 
 function switchView(v) {
