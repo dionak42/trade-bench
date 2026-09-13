@@ -1,11 +1,13 @@
 // Alpaca paper-trading client. Uses the same API keys as market data, but
 // against the paper trading host — real order simulation, fake money.
+import { cfg } from './config.js';
+
 const PAPER_BASE = 'https://paper-api.alpaca.markets';
 
 function authHeaders() {
   return {
-    'APCA-API-KEY-ID': process.env.ALPACA_API_KEY_ID,
-    'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET_KEY,
+    'APCA-API-KEY-ID': cfg('ALPACA_API_KEY_ID'),
+    'APCA-API-SECRET-KEY': cfg('ALPACA_API_SECRET_KEY'),
     'Content-Type': 'application/json',
   };
 }

@@ -592,9 +592,59 @@ function showError(msg) {
   header.innerHTML = `<div class="error-banner">Couldn’t load ${state.symbol}: ${msg}</div>`;
 }
 
+// ---------- Symbol search (type a name, pick a ticker) ----------
+let searchTimer = null;
+let lastResults = [];
+const searchInput = $('#search-input');
+const searchResults = $('#search-results');
+
+function hideSearch() { searchResults.classList.add('hidden'); searchResults.innerHTML = ''; lastResults = []; }
+
+function renderSearchResults(results) {
+  lastResults = results;
+  if (!results.length) { hideSearch(); return; }
+  searchResults.innerHTML = results.map((r) => `
+    <button type="button" class="search-item" data-symbol="${esc(r.symbol)}">
+      <span class="si-sym">${esc(r.symbol)}</span>
+      <span class="si-desc">${esc(r.description || '')}</span>
+    </button>`).join('');
+  searchResults.classList.remove('hidden');
+  searchResults.querySelectorAll('.search-item').forEach((b) =>
+    b.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // fire before the input blur
+      searchInput.value = b.dataset.symbol;
+      hideSearch();
+      loadSymbol(b.dataset.symbol);
+    }));
+}
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim();
+  clearTimeout(searchTimer);
+  if (q.length < 2) { hideSearch(); return; }
+  searchTimer = setTimeout(async () => {
+    try {
+      const { results } = await api(`/search?q=${encodeURIComponent(q)}`);
+      if (searchInput.value.trim() === q) renderSearchResults(results);
+    } catch { hideSearch(); }
+  }, 300);
+});
+searchInput.addEventListener('blur', () => setTimeout(hideSearch, 150));
+
 $('#search-form').addEventListener('submit', (e) => {
   e.preventDefault();
-  loadSymbol($('#search-input').value);
+  const typed = searchInput.value.trim();
+  // If it's a plain ticker, load it; otherwise take the first search match.
+  if (/^[A-Za-z]{1,6}$/.test(typed)) {
+    hideSearch();
+    loadSymbol(typed);
+  } else if (lastResults.length) {
+    searchInput.value = lastResults[0].symbol;
+    hideSearch();
+    loadSymbol(lastResults[0].symbol);
+  } else {
+    loadSymbol(typed);
+  }
 });
 
 $('#type-toggle').querySelectorAll('button').forEach((b) => {
@@ -983,6 +1033,71 @@ async function closePaperPosition(symbol) {
 }
 
 $('#paper-refresh').addEventListener('click', loadPaper);
+
+// ---------- Settings ----------
+function setKeyPlaceholder(sel, st) {
+  const el = $(sel);
+  el.value = '';
+  el.placeholder = st && st.set
+    ? `${st.source === 'env' ? 'from .env' : 'saved'} ····${st.last4}`
+    : 'not set';
+}
+
+async function loadSettingsStatus() {
+  const s = await api('/settings');
+  $('#set-name').value = s.displayName || '';
+  setKeyPlaceholder('#set-alpaca-id', s.ALPACA_API_KEY_ID);
+  setKeyPlaceholder('#set-alpaca-secret', s.ALPACA_API_SECRET_KEY);
+  setKeyPlaceholder('#set-finnhub', s.FINNHUB_API_KEY);
+}
+
+async function openSettings() {
+  $('#settings-status').innerHTML = '';
+  try { await loadSettingsStatus(); } catch (e) { /* still show the form */ }
+  $('#settings-overlay').classList.remove('hidden');
+}
+function closeSettings() { $('#settings-overlay').classList.add('hidden'); }
+
+$('#settings-btn').addEventListener('click', openSettings);
+$('#settings-close').addEventListener('click', closeSettings);
+$('#settings-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'settings-overlay') closeSettings();
+});
+
+$('#settings-save').addEventListener('click', async () => {
+  const body = { displayName: $('#set-name').value.trim() };
+  const map = {
+    ALPACA_API_KEY_ID: '#set-alpaca-id',
+    ALPACA_API_SECRET_KEY: '#set-alpaca-secret',
+    FINNHUB_API_KEY: '#set-finnhub',
+  };
+  for (const [k, sel] of Object.entries(map)) {
+    if ($(sel).value.trim()) body[k] = $(sel).value.trim();
+  }
+  try {
+    await api('/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    await loadSettingsStatus();
+    $('#settings-status').innerHTML = '<div class="settings-ok">✅ Saved. New keys take effect immediately.</div>';
+    if (state.symbol) { state.analysis = null; loadWatchlist().catch(() => {}); }
+  } catch (err) {
+    $('#settings-status').innerHTML = `<div class="settings-bad">Save failed: ${esc(err.message)}</div>`;
+  }
+});
+
+$('#settings-test').addEventListener('click', async () => {
+  $('#settings-status').innerHTML = '<div class="loading">Testing connections…</div>';
+  try {
+    const r = await api('/settings/test');
+    $('#settings-status').innerHTML =
+      `<div class="settings-test">Alpaca: ${r.alpaca ? '✅ connected' : '❌ failed'} &nbsp;·&nbsp; Finnhub: ${r.finnhub ? '✅ connected' : '❌ failed'}</div>`;
+  } catch (err) {
+    $('#settings-status').innerHTML = `<div class="settings-bad">Test failed: ${esc(err.message)}</div>`;
+  }
+});
 
 // ---------- Public hooks (used by help.js / tour) ----------
 window.planner = {
