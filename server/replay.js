@@ -17,6 +17,7 @@ export async function runReplay(symbol, opts = {}) {
     riskPct = 1,
     capital = 0,
     stopAtrMult = 2,
+    entryStyle = 'pullback',
   } = opts;
   if (!startDate) throw new Error('A start date is required.');
 
@@ -27,8 +28,8 @@ export async function runReplay(symbol, opts = {}) {
 
   // --- Levels from the system's rules, as of the start date (no lookahead) ---
   const lookback = bars.slice(startIdx - 20, startIdx);
-  const entry = Math.min(...lookback.map((b) => b.l));       // 20-day support
-  const target = Math.max(...lookback.map((b) => b.h));      // 20-day resistance
+  const support = Math.min(...lookback.map((b) => b.l));     // 20-day support
+  const resistance = Math.max(...lookback.map((b) => b.h));  // 20-day resistance
   const atrBars = bars.slice(startIdx - 15, startIdx);       // 14 true ranges
   let trSum = 0, trN = 0;
   for (let i = 1; i < atrBars.length; i++) {
@@ -36,7 +37,12 @@ export async function runReplay(symbol, opts = {}) {
     trSum += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
     trN++;
   }
-  const atr = trN ? trSum / trN : (target - entry) * 0.1;
+  const atr = trN ? trSum / trN : (resistance - support) * 0.1;
+  const breakout = entryStyle === 'breakout';
+  // Pullback: buy the 20-day support. Breakout: buy above the 20-day resistance,
+  // with a measured-move target (the prior range projected up).
+  const entry = breakout ? resistance : support;
+  const target = breakout ? resistance + (resistance - support) : resistance;
   const stop = Number((entry - stopAtrMult * atr).toFixed(2));
   const riskPerShare = entry - stop;
 
@@ -57,17 +63,22 @@ export async function runReplay(symbol, opts = {}) {
     stop,
     asOf: startDate,
     shares,
+    style: entryStyle,
   };
 
   const window = bars.slice(startIdx);
   if (window.length < 2) throw new Error('Not enough price history after the start date.');
 
-  // 1) Wait for the entry limit to be touched (a dip fills the buy).
+  // 1) Wait for the entry to trigger. Pullback = a dip to the buy-limit;
+  //    breakout = a break above the buy-stop.
   let entryIdx = -1, entryPrice = null, entryDate = null;
   for (let i = 0; i < window.length; i++) {
     const b = window[i];
-    if (b.l <= entry) {
-      entryPrice = b.o <= entry ? b.o : entry; // gap-down fills better
+    const triggered = breakout ? b.h >= entry : b.l <= entry;
+    if (triggered) {
+      entryPrice = breakout
+        ? (b.o >= entry ? b.o : entry)  // gap-up fills worse
+        : (b.o <= entry ? b.o : entry); // gap-down fills better
       entryIdx = i;
       entryDate = b.t.slice(0, 10);
       break;
@@ -76,7 +87,7 @@ export async function runReplay(symbol, opts = {}) {
   if (entryIdx < 0) {
     return {
       symbol, outcome: 'no_fill', ...levels,
-      message: `The entry limit (${levels.entry}) was never reached after ${startDate} — the trade would not have triggered.`,
+      message: `The ${breakout ? 'breakout above' : 'pullback to'} ${levels.entry} never triggered after ${startDate} — the trade would not have fired.`,
     };
   }
 
