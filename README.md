@@ -96,7 +96,8 @@ pm2 list                     # status
 ## Accessing over Tailscale
 
 - The server binds `0.0.0.0`, so it's reachable at this Mac mini's Tailscale IP.
-- **This machine's Tailscale IP:** `100.108.93.36` → open **http://100.108.93.36:3000**
+- **Find this machine's Tailscale IP** with `tailscale ip -4` (it looks like `100.x.x.x`), then
+  open **http://100.x.x.x:3000** from any device on your tailnet.
 - On your wife's device: install Tailscale, sign into the same tailnet, then open the
   same URL. (Her device must be connected to Tailscale.)
 - If macOS pops up "allow incoming connections," click **Allow** so the port is reachable.
