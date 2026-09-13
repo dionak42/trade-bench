@@ -15,6 +15,7 @@ const state = {
   view: 'analysis',  // 'analysis' (Research) | 'planner' (Options) | 'paper'
   analysis: null,    // cached scorecard for the loaded symbol
   sizingMode: 'risk', // 'risk' | 'capital'
+  entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
 };
 
@@ -777,10 +778,18 @@ function renderScorecard(a) {
 
 function renderPlanBuilder(a) {
   const l = a.levels, v = a.volatility;
-  // Preserve any edits across re-renders (e.g. when switching sizing mode).
   const cur = (id, dflt) => { const el = document.getElementById(id); return el && el.value !== '' ? el.value : dflt; };
-  const entry = cur('plan-entry', l.support20.toFixed(2));
-  const target = cur('plan-target', l.resistance20.toFixed(2));
+  const style = state.entryStyle;
+  const range = l.resistance20 - l.support20;
+  // Style sets the default entry/target: pullback buys support, breakout buys
+  // above resistance with a measured-move target.
+  const def = style === 'breakout'
+    ? { entry: l.resistance20, target: l.resistance20 + range }
+    : { entry: l.support20, target: l.resistance20 };
+  // On a style switch, reset entry/target to the new defaults; else preserve edits.
+  const entry = state._resetLevels ? def.entry.toFixed(2) : cur('plan-entry', def.entry.toFixed(2));
+  const target = state._resetLevels ? def.target.toFixed(2) : cur('plan-target', def.target.toFixed(2));
+  state._resetLevels = false;
   const stopPct = cur('plan-stop', Math.max(2, Math.round((v.atrPct || 0.03) * 2 * 100)));
   const acct = cur('plan-account', state.settings.accountSize || 10000);
   const risk = cur('plan-risk', state.settings.riskPct || 1);
@@ -792,19 +801,33 @@ function renderPlanBuilder(a) {
        ${field('plan-risk', 'Risk per trade (%)', risk, 'How much of the account you are willing to lose if the stop is hit. 1% is a common, conservative rule — it decides your share count.')}`
     : `${field('plan-capital', 'Capital ($)', cap, 'Dollars to deploy into this trade.')}`;
 
+  const entryLabel = style === 'breakout' ? 'Entry (buy stop)' : 'Entry (buy limit)';
+  const entryTip = style === 'breakout'
+    ? 'A buy-stop above resistance — fills when the stock breaks out to a new high (buying strength). Defaults to 20-day resistance.'
+    : 'A buy-limit at support — fills on a dip (buying weakness). Defaults to 20-day support.';
+  const targetTip = style === 'breakout'
+    ? 'Measured-move target: the prior 20-day range projected up from the breakout.'
+    : 'Where you sell all or part of the position. Defaults to 20-day resistance.';
+
   $('#plan-builder').innerHTML = `
+    <div class="toggle plan-mode" id="entry-style-toggle" role="tablist">
+      <button class="${style === 'pullback' ? 'active' : ''}" data-style="pullback" type="button">Pullback · buy support</button>
+      <button class="${style === 'breakout' ? 'active' : ''}" data-style="breakout" type="button">Breakout · buy resistance</button>
+    </div>
     <div class="toggle plan-mode" id="sizing-toggle" role="tablist">
       <button class="${mode === 'risk' ? 'active' : ''}" data-mode="risk" type="button">Risk-based sizing</button>
       <button class="${mode === 'capital' ? 'active' : ''}" data-mode="capital" type="button">Fixed capital</button>
     </div>
     <div class="calc-inputs">
-      ${field('plan-entry', 'Entry (buy limit)', entry, 'The price you set your buy order at. A dip to here fills you — buying weakness. Defaults to 20-day support.')}
-      ${field('plan-target', 'Profit target', target, 'Where you sell all or part of the position. Defaults to 20-day resistance.')}
+      ${field('plan-entry', entryLabel, entry, entryTip)}
+      ${field('plan-target', 'Profit target', target, targetTip)}
       ${field('plan-stop', 'Trailing stop %', stopPct, 'How far below the peak the runner can fall before it sells. Defaults to ~2× the average daily move.')}
       ${sizingInputs}
     </div>
     <div id="plan-out"></div>`;
 
+  $('#entry-style-toggle').querySelectorAll('button').forEach((b) =>
+    b.addEventListener('click', () => { state.entryStyle = b.dataset.style; state._resetLevels = true; renderPlanBuilder(a); }));
   $('#sizing-toggle').querySelectorAll('button').forEach((b) =>
     b.addEventListener('click', () => { state.sizingMode = b.dataset.mode; renderPlanBuilder(a); }));
   $('#plan-builder').querySelectorAll('input').forEach((inp) =>
@@ -833,6 +856,7 @@ function computePlan() {
   if (!out) return;
   const entry = val('plan-entry'), target = val('plan-target'), stopPct = val('plan-stop');
   const stopPrice = entry * (1 - stopPct / 100);
+  const breakout = state.entryStyle === 'breakout';
   const riskPS = entry - stopPrice;
   const rewardPS = target - entry;
   const rr = riskPS > 0 ? rewardPS / riskPS : null;
@@ -876,22 +900,26 @@ function computePlan() {
       ${outCell('% to stop', pct(-stopPct / 100))}
     </div>
     <div class="scenario">
-      <strong>Plan:</strong> buy ${shares} share${shares === 1 ? '' : 's'} at ${money(entry)} (${money(capital)}). Sell part at
+      <strong>Plan:</strong> ${breakout
+        ? `set a buy-stop at ${money(entry)} — fills on a breakout above resistance`
+        : `set a buy-limit at ${money(entry)} — fills on a dip to support`} (${shares} share${shares === 1 ? '' : 's'}, ${money(capital)}). Sell part at
       ${money(target)} (+${pct(toTarget)}), then trail the rest with a ${stopPct}% stop. Max loss ${money(dollarRisk)}${pctOfAcct != null ? ` — ${pct(pctOfAcct)} of the account` : ''}.
-      <br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the
-      Options tab and sell a cash-secured put around that strike.</span>
+      ${breakout ? '' : `<br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the Options tab and sell a cash-secured put around that strike.</span>`}
     </div>
     ${shares >= 1 && rr != null && state.symbol ? `
       <button class="primary-btn place-btn" id="plan-place">📈 Place as paper bracket order</button>
-      <div class="place-note">Buys ${shares} ${state.symbol} with a take-profit at ${money(target)} and a fixed stop at ${money(stopPrice)}. Simulated — no real money.</div>` : ''}`;
+      <div class="place-note">${breakout ? 'Buy-stop' : 'Buy-limit'} ${shares} ${state.symbol}, take-profit ${money(target)}, stop ${money(stopPrice)}. Simulated — no real money.</div>` : ''}`;
   const btn = document.getElementById('plan-place');
   if (btn) {
+    const entryOrder = breakout
+      ? { type: 'stop', stop_price: round2(entry) }
+      : { type: 'limit', limit_price: round2(entry) };
     btn.addEventListener('click', () => placePaperOrder({
-      symbol: state.symbol, qty: shares, side: 'buy', type: 'limit',
-      limit_price: round2(entry), time_in_force: 'gtc', order_class: 'bracket',
+      symbol: state.symbol, qty: shares, side: 'buy', ...entryOrder,
+      time_in_force: 'gtc', order_class: 'bracket',
       take_profit: { limit_price: round2(target) },
       stop_loss: { stop_price: round2(stopPrice) },
-    }, `Place a paper BRACKET order:\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\nMax loss: ${money(dollarRisk)}\n\nProceed? (simulated, no real money)`));
+    }, `Place a paper BRACKET order (${breakout ? 'buy-stop breakout' : 'buy-limit pullback'}):\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\nMax loss: ${money(dollarRisk)}\n\nProceed? (simulated, no real money)`));
   }
   drawPriceChart();
 }
@@ -917,7 +945,7 @@ async function runReplayUI() {
   const startDate = $('#replay-date').value;
   const out = $('#replay-result');
   out.innerHTML = '<div class="loading">Replaying with system levels as of that date…</div>';
-  const body = { startDate, mode: state.sizingMode };
+  const body = { startDate, mode: state.sizingMode, entryStyle: state.entryStyle };
   if (state.sizingMode === 'risk') {
     body.accountSize = val('plan-account');
     body.riskPct = val('plan-risk');
@@ -938,7 +966,7 @@ async function runReplayUI() {
 
 function renderReplayResult(r) {
   const out = $('#replay-result');
-  const levelsLine = `<div class="replay-levels">System plan <strong>as of ${r.asOf}</strong>: buy <strong>${money(r.entry)}</strong> · target <strong>${money(r.target)}</strong> · stop <strong>${money(r.stop)}</strong> · ${r.shares} shares</div>`;
+  const levelsLine = `<div class="replay-levels">${r.style === 'breakout' ? 'Breakout' : 'Pullback'} plan <strong>as of ${r.asOf}</strong>: buy <strong>${money(r.entry)}</strong> · target <strong>${money(r.target)}</strong> · stop <strong>${money(r.stop)}</strong> · ${r.shares} shares</div>`;
   if (r.outcome === 'no_fill') {
     out.innerHTML = `${levelsLine}<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>`;
     return;
