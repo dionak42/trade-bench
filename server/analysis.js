@@ -1,6 +1,6 @@
 // Technical analysis + lightweight news sentiment. Pure computation over
 // daily bars and headlines — objective signals only, never a recommendation.
-import { getDailyBars } from './alpaca.js';
+import { getDailyBars, getUnderlyingPrice, getOptionsChain } from './alpaca.js';
 import { getNews } from './finnhub.js';
 
 // ---- Indicator helpers ----
@@ -122,6 +122,18 @@ export async function scanSymbol(symbol) {
 
   const regime = sma50 != null && sma200 != null ? (sma50 >= sma200 ? 'golden' : 'death') : null;
   const gap = sma50 != null && sma200 != null ? (sma50 - sma200) / sma200 : null;
+
+  // Approaching cross: the 50/200 gap narrowing toward zero (direction-aware),
+  // so you catch a regime change forming before it flips.
+  const j = closes.length - 11; // ~2 weeks ago
+  const sma50p = smaAt(closes, j, 50), sma200p = smaAt(closes, j, 200);
+  const gapPrev = sma50p != null && sma200p != null ? (sma50p - sma200p) / sma200p : null;
+  let approaching = null;
+  if (regime && gap != null && gapPrev != null) {
+    if (regime === 'death' && gap > gapPrev && gap > -0.06) approaching = 'golden';
+    else if (regime === 'golden' && gap < gapPrev && gap < 0.06) approaching = 'death';
+  }
+
   let trendLabel = 'Sideways';
   if (sma50 && sma200) {
     if (price > sma50 && sma50 > sma200) trendLabel = 'Uptrend';
@@ -129,8 +141,36 @@ export async function scanSymbol(symbol) {
     else trendLabel = 'Mixed';
   }
   return {
-    symbol, price, trendLabel, regime, gap, cross,
+    symbol, price, trendLabel, regime, gap, cross, approaching,
     rsi14: rsi14 != null ? Number(rsi14.toFixed(0)) : null, direction,
+  };
+}
+
+// Covered-call income idea: the annualized yield from selling a ~0.30-delta
+// call ~30 days out. Answers "which holdings have juicy premium right now?"
+export async function getCoveredCallIdea(symbol) {
+  const { price } = await getUnderlyingPrice(symbol);
+  const chain = await getOptionsChain(symbol, { strikeGte: price, strikeLte: price * 1.35 });
+  const today = new Date().toISOString().slice(0, 10);
+  const minExp = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  const calls = chain.filter(
+    (c) => c.type === 'call' && c.delta != null && c.bid > 0 && c.expiration >= minExp
+  );
+  if (!calls.length) return null;
+  const targetExp = calls.map((c) => c.expiration).sort()[0];
+  const atExp = calls.filter((c) => c.expiration === targetExp);
+  let best = null, bestDist = Infinity;
+  for (const c of atExp) {
+    const d = Math.abs(Math.abs(c.delta) - 0.30);
+    if (d < bestDist) { bestDist = d; best = c; }
+  }
+  if (!best) return null;
+  const dte = Math.max(1, Math.round(
+    (new Date(targetExp + 'T00:00:00Z') - new Date(today + 'T00:00:00Z')) / 86400000
+  ));
+  return {
+    strike: best.strike, dte, premium: best.bid, delta: best.delta,
+    annualized: (best.bid / price) * (365 / dte),
   };
 }
 
