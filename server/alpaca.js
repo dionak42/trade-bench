@@ -39,6 +39,38 @@ export async function getUnderlyingPrice(symbol) {
   return { price, asOf };
 }
 
+// Daily price bars for technical analysis (free IEX feed). Returns oldest-first.
+export async function getDailyBars(symbol, days = 400) {
+  const start = new Date(Date.now() - days * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const bars = [];
+  let pageToken = null;
+  do {
+    const params = new URLSearchParams({
+      timeframe: '1Day',
+      start,
+      limit: '1000',
+      feed: 'iex',
+      adjustment: 'all',
+    });
+    if (pageToken) params.set('page_token', pageToken);
+    const res = await fetch(
+      `${DATA_BASE}/v2/stocks/${encodeURIComponent(symbol)}/bars?${params}`,
+      { headers: authHeaders() }
+    );
+    if (!res.ok) {
+      throw new Error(`Alpaca bars failed (${res.status}): ${await res.text()}`);
+    }
+    const json = await res.json();
+    for (const b of json?.bars ?? []) {
+      bars.push({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v });
+    }
+    pageToken = json?.next_page_token ?? null;
+  } while (pageToken);
+  return bars;
+}
+
 // Upcoming (and recent) cash dividends. Ex-date is what matters for
 // covered-call early-assignment risk. Returns the next future ex-date first.
 export async function getUpcomingDividend(symbol) {
