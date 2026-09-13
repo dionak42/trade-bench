@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { getUnderlyingPrice, getOptionsChain, getUpcomingDividend } from './alpaca.js';
 import { getNews, getNextEarnings, searchSymbols } from './finnhub.js';
 import { ivRankFor } from './ivrank.js';
-import { buildAnalysis, scanSymbol } from './analysis.js';
+import { buildAnalysis, scanSymbol, getCoveredCallIdea } from './analysis.js';
 import { runReplay } from './replay.js';
 import {
   getAccount, getPositions, getOrders, placeOrder, cancelOrder, closePosition,
@@ -73,6 +73,12 @@ router.get('/scan', wrap(async (req, res) => {
     symbols.map((s) => scanSymbol(s).catch(() => ({ symbol: s, error: true })))
   );
   res.json({ results });
+}));
+
+// Covered-call income idea for one symbol (for the scan's CC-yield column).
+router.get('/cc/:symbol', wrap(async (req, res) => {
+  const idea = await getCoveredCallIdea(req.params.symbol.toUpperCase());
+  res.json(idea || { annualized: null });
 }));
 
 // Technical scorecard + news sentiment (decision support, not advice).

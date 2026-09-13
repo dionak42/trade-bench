@@ -7,6 +7,12 @@ const HELP = {
     <p>Research a stock, plan a trade, practice it, and handle the options side — all in one
     place. Everything is organized into <strong>three views</strong> for whatever ticker you load.</p>
 
+    <h3>Your home dashboard</h3>
+    <p>The home screen (click the 🛠️ logo anytime) runs a <strong>momentum scan</strong> across your
+    whole watchlist at once — each ticker's trend, momentum direction, golden/death-cross signal, and
+    covered-call yield — so you see which names are worth opening without checking every chart. Click
+    any row to dive in.</p>
+
     <h3>Load any ticker</h3>
     <p>Type a symbol <em>or a company name</em> (even <code>Bitcoin</code>) in the search box and
     pick from the suggestions.</p>
@@ -479,7 +485,7 @@ document.getElementById('tour-btn').addEventListener('click', () => startTour())
 
 // ============ Guided tour ============
 const TOUR = [
-  { sel: '#search-form', text: '<strong>Start here.</strong> Type a ticker <em>or a company name</em> (even "Bitcoin") and pick from the suggestions.' },
+  { sel: '#search-form', text: '<strong>Start here.</strong> Type a ticker <em>or a company name</em> (even "Bitcoin") and pick from the suggestions. The home screen (🛠️ logo) also scans your whole watchlist for signals.' },
   { sel: '#view-toggle', text: 'Three modes per ticker: <strong>🔍 Research</strong> (analyze the stock + plan a trade), <strong>📊 Options</strong> (covered calls / cash-secured puts), and <strong>📈 Paper</strong> (practice trades with fake money). You start on Research.' },
   { sel: '#ticker-header', text: 'Price and key context — IV, upcoming earnings and dividends. Data is delayed ~15 min and auto-refreshes.' },
   { sel: '#scorecard', text: 'The <strong>scorecard</strong>: trend, momentum (with an <strong>RSI sparkline</strong> so you can see whether it’s rising or falling), volatility, support/resistance, and news sentiment.' },

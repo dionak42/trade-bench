@@ -98,9 +98,10 @@ async function loadSymbol(sym) {
     renderAll();
     renderNews(news.news);
     // WSJ deep link for the loaded ticker (opens in the user's logged-in browser).
-    const wsj = document.getElementById('wsj-link');
-    wsj.href = `https://www.wsj.com/market-data/quotes/${encodeURIComponent(sym)}`;
-    wsj.classList.remove('hidden');
+    document.querySelectorAll('.wsj-link').forEach((w) => {
+      w.href = `https://www.wsj.com/market-data/quotes/${encodeURIComponent(sym)}`;
+      w.classList.remove('hidden');
+    });
     selectDefaultContract();
     startAutoRefresh();
     switchView(state.view); // sync visible view (defaults to Research) + load its data
@@ -540,7 +541,7 @@ function renderEvents() {
 
 // ---------- News ----------
 function renderNews(items) {
-  $('#news-body').innerHTML = (items || []).map((n) => `
+  $('#research-news').innerHTML = (items || []).map((n) => `
     <li>
       <a href="${safeUrl(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.headline)}</a>
       <div class="news-meta">${esc(n.source || '')}${n.datetime ? ' · ' + new Date(n.datetime).toLocaleDateString() : ''}</div>
@@ -1169,16 +1170,15 @@ function dirBadge(d) {
 }
 
 function scanSignal(r) {
-  if (r.cross) {
+  if (r.cross && r.cross.daysAgo <= 25) {
     const g = r.cross.type === 'golden';
     return `<span class="${g ? 'good' : 'bad'}" style="font-weight:700">${g ? '⚡ Golden cross' : '🔻 Death cross'} · ${r.cross.daysAgo}d</span>`;
   }
+  if (r.approaching === 'golden') return '<span class="warn" style="font-weight:700">🔜 Nearing golden cross</span>';
+  if (r.approaching === 'death') return '<span class="warn" style="font-weight:700">🔜 Nearing death cross</span>';
   if (r.regime == null) return '<span class="muted">—</span>';
-  const near = r.gap != null && Math.abs(r.gap) < 0.04;
-  if (r.regime === 'golden') {
-    return near ? '<span class="warn">⚡ Golden · could flip</span>' : '<span class="good">⚡ Golden regime</span>';
-  }
-  return near ? '<span class="warn">🔻 Death · nearing golden</span>' : '<span class="bad">🔻 Death regime</span>';
+  if (r.regime === 'golden') return '<span class="good">⚡ Golden regime</span>';
+  return '<span class="bad">🔻 Death regime</span>';
 }
 
 async function renderScan() {
@@ -1192,20 +1192,22 @@ async function renderScan() {
   try {
     const { results } = await api(`/scan?symbols=${encodeURIComponent(syms.join(','))}`);
     const rows = results.map((r) => r.error
-      ? `<tr><td class="scan-sym">${esc(r.symbol)}</td><td colspan="4" class="muted">no data</td></tr>`
+      ? `<tr><td class="scan-sym">${esc(r.symbol)}</td><td colspan="5" class="muted">no data</td></tr>`
       : `<tr class="scan-row" data-symbol="${esc(r.symbol)}">
           <td class="scan-sym">${esc(r.symbol)}</td>
           <td>${money(r.price)}</td>
           <td class="${r.trendLabel === 'Uptrend' ? 'good' : r.trendLabel === 'Downtrend' ? 'bad' : ''}">${r.trendLabel}</td>
           <td>${r.rsi14 ?? '—'} ${dirBadge(r.direction)}</td>
           <td>${scanSignal(r)}</td>
+          <td class="cc-cell" data-cc="${esc(r.symbol)}"><span class="muted">…</span></td>
         </tr>`).join('');
     panel.innerHTML = `
       <section class="card">
         <div class="card-head"><h2>Watchlist Momentum Scan</h2>
           <button id="scan-refresh" class="ghost-btn" type="button">↻ Refresh</button></div>
         <div class="chain-scroll"><table class="chain-table scan-table">
-          <thead><tr><th>Symbol</th><th>Price</th><th>Trend</th><th>Momentum (RSI)</th><th>Signal</th></tr></thead>
+          <thead><tr><th>Symbol</th><th>Price</th><th>Trend</th><th>Momentum (RSI)</th><th>Signal</th>
+            <th data-tip="Annualized yield from selling a ~0.30-delta call about a month out, if you owned 100 shares. Higher = richer premium.">CC yield (ann.)</th></tr></thead>
           <tbody>${rows}</tbody>
         </table></div>
         <p class="hint">A signal is a cue to open that stock and decide — not an auto-trade. Click a row to research it.</p>
@@ -1214,6 +1216,22 @@ async function renderScan() {
       tr.addEventListener('click', () => { $('#search-input').value = tr.dataset.symbol; loadSymbol(tr.dataset.symbol); }));
     const rb = document.getElementById('scan-refresh');
     if (rb) rb.addEventListener('click', renderScan);
+
+    // Fill the covered-call yield column async (one options lookup per name).
+    results.filter((r) => !r.error).forEach(async (r) => {
+      const cell = panel.querySelector(`[data-cc="${r.symbol}"]`);
+      if (!cell) return;
+      try {
+        const cc = await api(`/cc/${encodeURIComponent(r.symbol)}`);
+        if (cc && cc.annualized != null) {
+          cell.innerHTML = `<span class="${cc.annualized >= 0.15 ? 'good' : ''}" data-tip="~0.30-delta call · $${cc.strike} strike · ${cc.dte}d out · $${cc.premium.toFixed(2)} premium">${pct(cc.annualized, 0)}</span>`;
+        } else {
+          cell.innerHTML = '<span class="muted">—</span>';
+        }
+      } catch {
+        cell.innerHTML = '<span class="muted">—</span>';
+      }
+    });
   } catch { /* keep prior content on error */ }
 }
 
