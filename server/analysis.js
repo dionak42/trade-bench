@@ -69,6 +69,71 @@ function scoreSentiment(headlines) {
   return { label, net, positiveHits: pos, negativeHits: neg, headlineCount: headlines.length };
 }
 
+// RSI ending at a given index (for direction), shared by scan.
+function rsiEndingAt(closes, end, period = 14) {
+  if (end < period) return null;
+  let g = 0, l = 0;
+  for (let i = end - period + 1; i <= end; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff >= 0) g += diff; else l -= diff;
+  }
+  const ag = g / period, al = l / period;
+  if (al === 0) return 100;
+  return 100 - 100 / (1 + ag / al);
+}
+
+// Lightweight scan for the watchlist dashboard: trend, momentum direction,
+// and golden/death-cross status — no news call, so it's fast across a list.
+export async function scanSymbol(symbol) {
+  const bars = await getDailyBars(symbol, 600);
+  if (bars.length < 30) throw new Error(`Not enough history for ${symbol}`);
+  const closes = bars.map((b) => b.c);
+  const price = closes[closes.length - 1];
+  const sma50 = sma(closes, 50);
+  const sma200 = sma(closes, 200);
+  const rsi14 = rsi(closes, 14);
+  const rsiPrev = rsiEndingAt(closes, closes.length - 6);
+  const rsiChange = rsi14 != null && rsiPrev != null ? rsi14 - rsiPrev : null;
+  let direction = 'flat';
+  if (rsiChange != null) {
+    if (rsiChange > 2) direction = 'rising';
+    else if (rsiChange < -2) direction = 'falling';
+  }
+
+  const smaAt = (arr, i, p) => {
+    if (i + 1 < p) return null;
+    let s = 0;
+    for (let k = i - p + 1; k <= i; k++) s += arr[k];
+    return s / p;
+  };
+  const N = Math.min(bars.length, 130);
+  let cross = null, prevDiff = null;
+  for (let i = bars.length - N; i < bars.length; i++) {
+    const a = smaAt(closes, i, 50), b = smaAt(closes, i, 200);
+    if (a == null || b == null) { prevDiff = null; continue; }
+    const diff = a - b;
+    if (prevDiff != null) {
+      if (prevDiff <= 0 && diff > 0) cross = { type: 'golden', date: bars[i].t.slice(0, 10) };
+      else if (prevDiff >= 0 && diff < 0) cross = { type: 'death', date: bars[i].t.slice(0, 10) };
+    }
+    prevDiff = diff;
+  }
+  if (cross) cross.daysAgo = Math.round((Date.now() - new Date(cross.date + 'T00:00:00Z')) / 86400000);
+
+  const regime = sma50 != null && sma200 != null ? (sma50 >= sma200 ? 'golden' : 'death') : null;
+  const gap = sma50 != null && sma200 != null ? (sma50 - sma200) / sma200 : null;
+  let trendLabel = 'Sideways';
+  if (sma50 && sma200) {
+    if (price > sma50 && sma50 > sma200) trendLabel = 'Uptrend';
+    else if (price < sma50 && sma50 < sma200) trendLabel = 'Downtrend';
+    else trendLabel = 'Mixed';
+  }
+  return {
+    symbol, price, trendLabel, regime, gap, cross,
+    rsi14: rsi14 != null ? Number(rsi14.toFixed(0)) : null, direction,
+  };
+}
+
 // ---- Assemble the scorecard ----
 export async function buildAnalysis(symbol) {
   // ~600 calendar days (~410 trading) so the 200-day MA has enough history to

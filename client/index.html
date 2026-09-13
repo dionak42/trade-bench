@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🛠️ Trade Bench</div>
+    <div class="brand" id="brand-home" title="Home / watchlist scan" style="cursor:pointer">🛠️ Trade Bench</div>
     <form id="search-form" class="search">
       <input id="search-input" type="text" placeholder="Ticker or name (e.g. NVDA, Bitcoin)"
              autocomplete="off" spellcheck="false" aria-label="Ticker or company name" />
@@ -30,6 +30,9 @@
       <p>Enter a ticker above to analyze the stock, build a trade plan, replay it on history, plan options, and practice in paper.</p>
       <div id="watchlist-empty" class="watchlist-chips"></div>
     </section>
+
+    <!-- Watchlist momentum scan (home dashboard) -->
+    <div id="scan-panel" class="scan-panel hidden"></div>
 
     <!-- Loaded content -->
     <div id="content" class="content hidden">
