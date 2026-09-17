@@ -73,6 +73,8 @@ async function loadSymbol(sym) {
   $('#empty-state').classList.add('hidden');
   $('#scan-panel').classList.add('hidden');
   $('#content').classList.remove('hidden');
+  $('#ticker-header').classList.remove('hidden');
+  $('#view-toggle').classList.remove('hidden');
   setRefreshStatus('Loading…');
 
   try {
@@ -1009,6 +1011,27 @@ function switchView(v) {
 
 $('#view-toggle').querySelectorAll('button').forEach((b) =>
   b.addEventListener('click', () => switchView(b.dataset.view)));
+
+// Open the Paper account directly — works from the home page too, since it's
+// portfolio-level (not tied to a loaded ticker).
+function openPaper() {
+  const hasSymbol = Boolean(state.symbol);
+  $('#empty-state').classList.add('hidden');
+  $('#scan-panel').classList.add('hidden');
+  $('#content').classList.remove('hidden');
+  $('#ticker-header').classList.toggle('hidden', !hasSymbol);
+  $('#view-toggle').classList.toggle('hidden', !hasSymbol);
+  $('#planner-view').classList.add('hidden');
+  $('#analysis-view').classList.add('hidden');
+  $('#paper-view').classList.remove('hidden');
+  state.view = 'paper';
+  if (hasSymbol) {
+    $('#view-toggle').querySelectorAll('button').forEach((b) =>
+      b.classList.toggle('active', b.dataset.view === 'paper'));
+  }
+  loadPaper();
+}
+$('#paper-btn').addEventListener('click', openPaper);
 
 // ---------- Paper trading ----------
 async function loadPaper() {
