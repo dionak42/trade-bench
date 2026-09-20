@@ -13,6 +13,7 @@ the bottom — that section matters as much as the rules themselves.
 ## The rules
 
 **1. What I trade**
+**Common stock only.** Long positions, no options, no shorting.
 Only symbols in my Trade Bench watchlist — the holdings in my Roth. I do not
 trade tickers I heard about somewhere. Adding a name to the watchlist is a
 separate, deliberate decision made outside market hours, never in the moment.
@@ -39,9 +40,13 @@ resistance, stop at ~2× ATR below entry. Then I leave it alone. Moving a stop
 away from price is the single rule I am most likely to break, so it is the one
 I grade hardest.
 
-**6. Income overlay — not yet**
-Covered calls on Roth holdings of 100+ shares, ~0.30 delta, ~30 DTE. Locked
-until Phase 3 below. Only on shares I'd be content to see sold at the strike.
+**6. What I don't do**
+No options — not covered calls, not cash-secured puts. The Options tab stays a
+place to learn and look, not part of my system. No shorting, no leverage, no
+averaging down into a loser, no trading a name that isn't in the watchlist.
+
+A rule about what I *don't* do is worth as much as one about what I do: it's
+the list I can check against in the moment when something looks tempting.
 
 ---
 
@@ -81,8 +86,11 @@ Not when I'm profitable — when I'm *obedient*. Profit in paper proves nothing;
 following the plan 8 times out of 10 proves something.
 
 **Phase 3 — Real Roth money, smallest viable size.**
-Covered calls on existing holdings first (no new position, no new capital).
-New stock positions only after that's routine.
+First real trades are on names **already held in the Roth** — applying the
+entry and exit discipline to companies I've already decided I want to own. That
+keeps *what I own* and *when I trade it* as two separate decisions, and it means
+the first live rep tests my execution, not my stock picking. New names only once
+that's routine.
 
 ---
 
@@ -95,14 +103,14 @@ Worth re-reading whenever 0.5% feels too small.
   tax-advantaged space I cannot buy back at any price. This is the single
   strongest argument for sizing smaller than the usual 1–2% advice.
 - **Losses aren't deductible.** No tax-loss harvesting, no consolation prize.
-- **Gains and assignments are untaxed.** Genuinely favourable: covered calls and
-  assignment create no tax event here, so the usual "don't call away a low-basis
-  holding" objection doesn't apply to me.
-- **It's a cash account — no margin.** No shorting, no naked options. Cash-secured
-  puts need the full cash parked. Proceeds settle T+1; spending unsettled cash
-  risks a good-faith violation, so I don't sell and immediately rebuy.
-- **Options approval is broker-specific.** Confirm the IRA's approval level
-  before Phase 3 assumes covered calls are available.
+- **Gains are untaxed.** Genuinely favourable: taking a profit here costs
+  nothing in tax, so I never hold a winner past my target for tax reasons. The
+  target is the target.
+- **It's a cash account — no margin.** Proceeds settle T+1, and buying with
+  unsettled cash risks a good-faith violation. So I don't sell a position and
+  immediately rebuy, and I keep enough settled cash that a fill never depends on
+  a sale clearing first. This is the practical constraint most likely to bite a
+  stock system in an IRA.
 
 ---
 
@@ -139,7 +147,11 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 | Stop distance | ~2× ATR | Average loss materially worse than -1.0R → widen |
 | Regime filter | Golden cross only | Check how many skipped setups would have won |
 | Hold period | No time limit | If winners resolve in ~20 days, dead trades tie up risk |
+| Stocks only | No options | Revisit only after a full phase cycle, if ever |
 
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-20** — v1.1: scoped to common stock only. Options overlay removed
+  and replaced with an explicit "what I don't do" rule; Phase 3 on-ramp changed
+  from covered calls to stock trades in names already held.
