@@ -29,6 +29,12 @@ I place the order and wait. If it doesn't fill, that's a valid outcome and I
 log it. I never buy at market because the chart looked good while I was
 watching it.
 
+I leave an order resting for **20 trading days**. After that the support level
+it was based on is stale, so I cancel and re-plan from current levels rather
+than letting a month-old price sit out there. *(This rule only exists because
+the backtest refused to run without an answer to it — worth noticing how many
+rules you're carrying implicitly until something forces you to state them.)*
+
 **4. How much**
 **0.5% of the Roth at risk per trade**, risk-based sizing, stop distance sets
 the share count. If 0.5% won't buy a single share, the position is too big for
@@ -70,12 +76,21 @@ actually run, and checking prices daily is how a plan turns into a reaction.
 
 I do not skip a phase because I feel ready. The journal decides.
 
-**Phase 1 — Replay only. No money, real or paper.**
-Run historical replays across watchlist names and varied start dates. Log
-every rep.
-*Advance when:* **30+ logged replay reps.** Before looking at the stats, I
-write down what I expect my win rate and average R to be. Then I compare. Being
-wrong about my own system is the lesson of this phase.
+**Phase 1 — Backtest only. No money, real or paper.**
+Run **🧪 Test system** across the whole watchlist over 3–5 years. Before looking
+at the output I write down what I expect the win rate and average R to be, so
+the comparison is honest. Then I read the segments, not just the headline: by
+symbol, by year, by regime.
+
+*Advance when:* I can state from memory my system's **expectancy, worst
+drawdown, and worst losing streak**, and the result isn't resting on one symbol
+or one good year. If the headline is within about ±0.05R of zero, that is not a
+near miss — it's no evidence the system works, and no commissions or slippage
+have even been charged yet.
+
+Also worth doing here: a handful of single replays in the Research tab, logged
+to the journal one at a time. Not for the statistics — the backtest already has
+those — but to learn the interface I'll be using for real.
 
 **Phase 2 — Paper, mirroring the Roth.**
 Mirror my actual Roth holdings into the paper account and run the system
@@ -147,11 +162,15 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 | Stop distance | ~2× ATR | Average loss materially worse than -1.0R → widen |
 | Regime filter | Golden cross only | Check how many skipped setups would have won |
 | Hold period | No time limit | If winners resolve in ~20 days, dead trades tie up risk |
+| Order resting time | 20 trading days | Compare fill rate and expectancy at 10 / 20 / 40 in the backtest |
 | Stocks only | No options | Revisit only after a full phase cycle, if ever |
 
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-20** — v1.2: added the order-resting rule (20 trading days), which
+  the backtest forced me to make explicit. Phase 1 rewritten around the batch
+  backtest rather than 30 manual replays — same lesson, better evidence.
 - **2026-09-20** — v1.1: scoped to common stock only. Options overlay removed
   and replaced with an explicit "what I don't do" rule; Phase 3 on-ramp changed
   from covered calls to stock trades in names already held.

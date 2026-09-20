@@ -158,5 +158,72 @@
     container.innerHTML = svg(W, H, lines + line + startDot + endDot + xLabels);
   }
 
-  window.charts = { rsiSparkline, priceChart, payoffChart, replayChart };
+
+  // ---------- Equity curve, in R ----------
+  // Cumulative R over the sequence of trades. Plotted in R rather than dollars
+  // on purpose: dollars depend on account size and would let a big position
+  // disguise a bad run. The shape — how deep the dips go and how long they
+  // last — is what tells you whether you could actually have sat through it.
+  function equityCurve(container, curve) {
+    if (!curve || curve.length < 2) { container.innerHTML = ''; return; }
+    const W = 640, H = 220, padL = 8, padR = 46, padT = 14, padB = 22;
+    const rs = curve.map((p) => p.r);
+    const min = Math.min(0, ...rs), max = Math.max(0, ...rs);
+    const sx = scale(0, curve.length - 1, padL, W - padR);
+    const sy = scale(min, max, H - padB, padT);
+    const pts = curve.map((p, i) => [sx(i), sy(p.r)]);
+
+    // Shade the deepest peak-to-trough stretch — the bad patch you'd have lived through.
+    let peak = -Infinity, peakI = 0, ddStart = 0, ddEnd = 0, worst = 0;
+    for (let i = 0; i < curve.length; i++) {
+      if (curve[i].r > peak) { peak = curve[i].r; peakI = i; }
+      const dd = peak - curve[i].r;
+      if (dd > worst) { worst = dd; ddStart = peakI; ddEnd = i; }
+    }
+    const shade = worst > 0
+      ? `<rect x="${sx(ddStart).toFixed(1)}" y="${padT}" width="${(sx(ddEnd) - sx(ddStart)).toFixed(1)}"
+           height="${H - padB - padT}" fill="var(--bad)" opacity="0.07" />`
+      : '';
+
+    const zero = hline(sy(0), padL, W - padR, 'var(--border)', '', W);
+    const last = curve[curve.length - 1].r;
+    const color = last >= 0 ? 'var(--good)' : 'var(--bad)';
+    const endLabel = txt(W - padR + 4, sy(last) + 3, `${last >= 0 ? '+' : ''}${last.toFixed(1)}R`,
+      { color, size: 11, weight: '700' });
+    const axis =
+      txt(padL, padT - 3, `${max >= 0 ? '+' : ''}${max.toFixed(1)}R`, { size: 9 }) +
+      txt(padL, H - padB + 12, curve[0].d, { size: 9 }) +
+      txt(W - padR, H - padB + 12, curve[curve.length - 1].d, { size: 9, anchor: 'end' }) +
+      (worst > 0 ? txt((sx(ddStart) + sx(ddEnd)) / 2, H - padB - 4,
+        `worst drawdown −${worst.toFixed(1)}R`, { anchor: 'middle', size: 9, color: 'var(--bad)' }) : '');
+
+    container.innerHTML = svg(W, H, shade + zero + polyline(pts, color, { width: 2 }) + endLabel + axis);
+  }
+
+  // ---------- Distribution of results, in R ----------
+  // A working trend system usually looks like a wall of small losses with a
+  // thin tail of large wins. Seeing that shape before trading is what stops
+  // you abandoning the system while you are standing in the wall.
+  function rHistogram(container, buckets) {
+    if (!buckets || !buckets.length) { container.innerHTML = ''; return; }
+    const W = 640, H = 190, padL = 8, padR = 8, padT = 14, padB = 34;
+    const maxC = Math.max(...buckets.map((b) => b.count), 1);
+    const bw = (W - padL - padR) / buckets.length;
+    const sy = scale(0, maxC, H - padB, padT);
+    const bars = buckets.map((b, i) => {
+      const x = padL + i * bw + bw * 0.14;
+      const w = bw * 0.72;
+      const y = sy(b.count);
+      const h = Math.max(0, H - padB - y);
+      const neg = b.label.includes('-') && !b.label.startsWith('0');
+      const color = neg ? 'var(--bad)' : 'var(--good)';
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}"
+                fill="${color}" opacity="${b.count ? 0.82 : 0.18}" rx="2" />` +
+        (b.count ? txt(x + w / 2, y - 3, b.count, { anchor: 'middle', size: 10, weight: '700', color }) : '') +
+        txt(x + w / 2, H - padB + 13, b.label, { anchor: 'middle', size: 8.5 });
+    }).join('');
+    container.innerHTML = svg(W, H, bars);
+  }
+
+  window.charts = { rsiSparkline, priceChart, payoffChart, replayChart, equityCurve, rHistogram };
 })();

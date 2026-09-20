@@ -20,6 +20,8 @@ const state = {
   journalTrades: [],
   journalOpen: new Set(), // ids of expanded review forms
   planThesis: '',    // survives plan-builder re-renders
+  backtestSymbols: '', backtestYears: 3, backtestWait: 20,
+  backtestStyle: 'pullback', backtestResult: null,
   entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
 };
@@ -1068,9 +1070,11 @@ function switchView(v) {
   $('#analysis-view').classList.toggle('hidden', v !== 'analysis');
   $('#paper-view').classList.toggle('hidden', v !== 'paper');
   $('#journal-view').classList.toggle('hidden', v !== 'journal');
+  $('#backtest-view').classList.toggle('hidden', v !== 'backtest');
   if (v === 'analysis' && state.symbol) loadAnalysis();
   if (v === 'paper') loadPaper();
   if (v === 'journal') loadJournal();
+  if (v === 'backtest') renderBacktestControls();
 }
 
 $('#view-toggle').querySelectorAll('button').forEach((b) =>
@@ -1088,6 +1092,7 @@ function openPaper() {
   $('#planner-view').classList.add('hidden');
   $('#analysis-view').classList.add('hidden');
   $('#journal-view').classList.add('hidden');
+  $('#backtest-view').classList.add('hidden');
   $('#paper-view').classList.remove('hidden');
   state.view = 'paper';
   if (hasSymbol) {
@@ -1229,6 +1234,7 @@ function openJournal() {
   $('#planner-view').classList.add('hidden');
   $('#analysis-view').classList.add('hidden');
   $('#paper-view').classList.add('hidden');
+  $('#backtest-view').classList.add('hidden');
   $('#journal-view').classList.remove('hidden');
   state.view = 'journal';
   if (hasSymbol) {
@@ -1517,6 +1523,339 @@ $('#journal-symbol-filter').addEventListener('change', (e) => {
   state.journalSymbol = e.target.value;
   loadJournal();
 });
+
+// ---------- System backtest ----------
+// One replay is an anecdote. This runs the system across every symbol you pick,
+// one trade after another, over years — and then splits the results up, because
+// the headline number hides the places where a system actually breaks down.
+
+function openBacktest() {
+  const hasSymbol = Boolean(state.symbol);
+  $('#empty-state').classList.add('hidden');
+  $('#scan-panel').classList.add('hidden');
+  $('#content').classList.remove('hidden');
+  $('#ticker-header').classList.toggle('hidden', !hasSymbol);
+  $('#view-toggle').classList.toggle('hidden', !hasSymbol);
+  $('#planner-view').classList.add('hidden');
+  $('#analysis-view').classList.add('hidden');
+  $('#paper-view').classList.add('hidden');
+  $('#journal-view').classList.add('hidden');
+  $('#backtest-view').classList.remove('hidden');
+  state.view = 'backtest';
+  if (hasSymbol) {
+    $('#view-toggle').querySelectorAll('button').forEach((b) =>
+      b.classList.toggle('active', b.dataset.view === 'backtest'));
+  }
+  renderBacktestControls();
+}
+
+function renderBacktestControls() {
+  const el = $('#backtest-controls');
+  if (el.dataset.ready) return; // keep whatever the user typed
+  const watch = (state._watchlist || []).map((w) => w.symbol);
+  const symbols = state.backtestSymbols
+    || (watch.length ? watch.join(', ') : (state.symbol || ''));
+  el.dataset.ready = '1';
+  el.innerHTML = `
+    <div class="toggle plan-mode" id="bt-style-toggle" role="tablist">
+      <button class="active" data-style="pullback" type="button">Pullback · buy support</button>
+      <button data-style="breakout" type="button">Breakout · buy resistance</button>
+    </div>
+    <div class="field">
+      <label><span class="q" data-tip="Comma-separated tickers. Defaults to your watchlist — the universe your system actually trades. Up to 25.">Symbols</span></label>
+      <textarea id="bt-symbols" rows="2" placeholder="AAPL, MSFT, COST">${esc(symbols)}</textarea>
+    </div>
+    <div class="calc-inputs">
+      ${field('bt-years', 'Years of history', state.backtestYears || 3, 'How far back to run. More years means more trades and more market conditions — including ones you would rather not have traded through.')}
+      ${field('bt-account', 'Account size ($)', state.settings.accountSize || 60000, 'Only affects share counts and dollar P&L. Results in R are unaffected by it.')}
+      ${field('bt-risk', 'Risk per trade (%)', state.settings.riskPct || 0.5, "Your system's sizing rule.")}
+      ${field('bt-wait', 'Days to leave an order resting', state.backtestWait || 20, 'How long a buy order waits before the level it was based on is stale and gets re-derived. A rule the plan builder never made you state — the backtest forces the question.')}
+    </div>
+    <button class="primary-btn" id="bt-run" type="button">🧪 Run the system over history</button>
+    <p class="hint">Fetches price history for each symbol, so a long list takes a few seconds.
+    Levels are re-derived on every trade from that day's bars only — no lookahead.</p>`;
+  $('#bt-style-toggle').querySelectorAll('button').forEach((b) =>
+    b.addEventListener('click', () => {
+      $('#bt-style-toggle').querySelectorAll('button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.backtestStyle = b.dataset.style;
+    }));
+  $('#bt-run').addEventListener('click', runBacktestUI);
+}
+
+async function runBacktestUI() {
+  const out = $('#backtest-result');
+  const symbols = $('#bt-symbols').value.trim();
+  if (!symbols) { window.alert('Add at least one symbol.'); return; }
+  state.backtestSymbols = symbols;
+  state.backtestYears = val('bt-years');
+  state.backtestWait = val('bt-wait');
+  const btn = $('#bt-run');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  out.innerHTML = '<div class="loading">Walking the history, one trade at a time…</div>';
+  try {
+    const r = await api('/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbols,
+        years: val('bt-years'),
+        mode: 'risk',
+        accountSize: val('bt-account'),
+        riskPct: val('bt-risk'),
+        maxWaitBars: val('bt-wait'),
+        entryStyle: state.backtestStyle || 'pullback',
+      }),
+    });
+    state.backtestResult = r;
+    renderBacktestResult(r);
+  } catch (err) {
+    out.innerHTML = `<div class="error-banner">${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🧪 Run the system over history';
+  }
+}
+
+const rTxt = (v) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}R`);
+
+function renderBacktestResult(r) {
+  const o = r.overall;
+  if (!o.scored) {
+    $('#backtest-result').innerHTML = `
+      <section class="card"><div class="event-none">
+        No trades fired over that window. With a pullback entry that usually means the
+        stocks never dipped to support within the waiting period — try a longer window,
+        more days to leave an order resting, or the breakout style.
+      </div></section>
+      ${r.errors.length ? errorsCard(r.errors) : ''}`;
+    return;
+  }
+  const expCls = o.avgR > 0 ? 'good' : 'bad';
+  $('#backtest-result').innerHTML = `
+    <div class="scorecard">
+      ${scoreCard('Trades', o.scored, `${o.wins}W / ${o.losses}L · ${r.params.symbols.length} symbols · ${r.params.years}y`)}
+      ${scoreCard('Win rate', pct(o.winRate, 0), 'How often it was right')}
+      ${scoreCard('Expectancy', rTxt(o.avgR), `Per trade · ${rTxt(o.totalR)} total`, expCls)}
+      ${scoreCard('Profit factor', o.profitFactor != null ? o.profitFactor.toFixed(2) : '—',
+        'Gross wins ÷ gross losses. Above 1 means the wins carried the losses',
+        o.profitFactor != null && o.profitFactor > 1 ? 'good' : 'bad')}
+      ${scoreCard('Worst drawdown', `−${o.maxDrawdownR}R`,
+        'Deepest peak-to-trough fall — the stretch you would have had to sit through', 'warn')}
+      ${scoreCard('Worst losing streak', o.worstLossStreak,
+        `${o.losses} losses total · ${o.avgDaysHeld}d average hold`)}
+    </div>
+    ${verdictBox(r)}
+    <section class="card">
+      <div class="card-head"><h2>Equity curve (in R)</h2>
+        <span class="not-advice" data-tip="Cumulative R across the sequence, oldest trade first. Shaded band marks the deepest drawdown.">Shape &gt; total</span>
+      </div>
+      <div id="bt-equity" class="chart-box"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Distribution of results</h2></div>
+      <div id="bt-hist" class="chart-box"></div>
+      <p class="hint">Average win ${rTxt(o.avgWinR)} against average loss ${rTxt(o.avgLossR)}.
+      A wall of small losses with a thin tail of big wins is what a working trend system
+      normally looks like — the tail is where the money is, and it is also why the middle
+      of the wall feels so much like being broken.</p>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Where it breaks down</h2>
+        <span class="not-advice" data-tip="The headline hides the segments. A system with decent overall numbers can be carried entirely by one symbol or one good year.">Segments, not averages</span>
+      </div>
+      ${segmentTable('By symbol', r.bySymbol, 'Symbol')}
+      ${segmentTable('By year', r.byYear, 'Year')}
+      ${segmentTable('By regime at entry', r.byRegime, 'Regime')}
+      ${concentrationNote(r)}
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Every trade</h2>
+        <button class="ghost-btn sm" id="bt-log-all" data-tip="Files all of these in the journal as replay reps. They log as rules-followed by definition, so they become the baseline your live trades get graded against.">📓 Log all to journal</button>
+      </div>
+      <div class="chain-scroll" style="max-height:420px">${tradesTable(r.trades)}</div>
+    </section>
+    ${r.errors.length ? errorsCard(r.errors) : ''}`;
+
+  if (window.charts) {
+    window.charts.equityCurve($('#bt-equity'), o.curve);
+    window.charts.rHistogram($('#bt-hist'), r.rDistribution);
+  }
+  const logAll = $('#bt-log-all');
+  if (logAll) logAll.addEventListener('click', () => logAllBacktestTrades(r));
+}
+
+// The headline verdict: does the system pay, and does the regime filter earn its keep?
+function verdictBox(r) {
+  const o = r.overall;
+  // A hair above break-even is not an edge. Calling +0.01R "positive
+  // expectancy" would be technically true and practically a lie: after
+  // commissions and slippage — neither of which this sim charges you — a
+  // result this thin is indistinguishable from flipping coins.
+  const marginal = Math.abs(o.avgR) < 0.06 ||
+    (o.profitFactor != null && o.profitFactor > 0.95 && o.profitFactor < 1.05);
+  const works = !marginal && o.avgR > 0 && o.profitFactor > 1;
+  const thin = o.scored < 30;
+  const fv = r.filterVerdict;
+
+  let filterLine = '';
+  if (fv) {
+    filterLine = fv.helps
+      ? `<li><strong>The regime filter earns its keep.</strong> Trades taken in a golden-cross
+         regime averaged <strong>${rTxt(fv.goldenAvgR)}</strong> against
+         <strong>${rTxt(fv.deathAvgR)}</strong> in a death-cross regime — an edge of
+         ${rTxt(fv.edge)} per trade. Rule 2 is doing real work.</li>`
+      : `<li><strong>The regime filter is not paying for itself here.</strong> Golden-cross
+         trades averaged <strong>${rTxt(fv.goldenAvgR)}</strong> against
+         <strong>${rTxt(fv.deathAvgR)}</strong> in a death-cross regime. On this sample the
+         filter is costing you trades without buying safety — worth a longer window before
+         changing rule 2, but note it.</li>`;
+  } else {
+    filterLine = `<li>Not enough trades in both regimes to judge the golden-cross filter yet.
+      Add symbols or years if you want to test rule 2.</li>`;
+  }
+
+  const headline = marginal ? '➖ Too close to call — this is break-even.'
+    : works ? '📈 Positive expectancy over this sample.'
+    : '📉 This did not pay over this sample.';
+  let body;
+  if (marginal) {
+    body = `That is a rounding error, not an edge. This backtest charges no commission and
+      assumes every order fills at your price, so a real account running this would have come
+      out behind. Treat it as "no evidence the system works" rather than a near miss.`;
+  } else if (works) {
+    body = `Being right ${pct(o.winRate, 0)} of the time was enough because the average win
+      (${rTxt(o.avgWinR)}) was bigger than the average loss (${rTxt(o.avgLossR)}).`;
+  } else {
+    body = `The wins were not big enough to cover the losses. Before changing anything, check the
+      segments below — it may be one symbol or one year doing the damage.`;
+  }
+  return `
+    <div class="journal-insight ${works ? 'good-box' : 'warn-box'}">
+      <strong>${headline}</strong>
+      ${o.scored} trades, ${pct(o.winRate, 0)} win rate, ${rTxt(o.avgR)} per trade.
+      ${body}
+      <ul style="margin:8px 0 0 18px;padding:0">
+        ${filterLine}
+        ${thin ? `<li><strong>${o.scored} trades is a thin sample.</strong> Anything under about
+          30 is closer to a rumour than a result — widen the symbol list or the years before
+          you trust it.</li>` : ''}
+        <li>You would have had to sit through a <strong>−${o.maxDrawdownR}R</strong> drawdown and
+        <strong>${o.worstLossStreak} losses in a row</strong>. That is the number that decides
+        whether you would still be running this system when it started working again.</li>
+      </ul>
+    </div>`;
+}
+
+// Is the whole result resting on one symbol? Averages hide that; this doesn't.
+function concentrationNote(r) {
+  const scored = r.bySymbol.filter((s) => s.scored > 0);
+  if (scored.length < 3 || r.overall.totalR == null) return '';
+  const best = scored.reduce((a, b) => ((b.totalR ?? 0) > (a.totalR ?? 0) ? b : a));
+  const bestR = best.totalR ?? 0;
+  if (bestR <= 0) return '';
+  const rest = r.overall.totalR - bestR;
+  const share = r.overall.totalR > 0 ? bestR / r.overall.totalR : null;
+  // Only worth saying when one name is actually carrying the result: either it
+  // beats everything else combined, or the rest of the book lost money.
+  if (rest > 0 && (share == null || share < 0.5)) return '';
+  const headline = rest <= 0
+    ? `${esc(best.key)} made ${rTxt(bestR)} while every other symbol combined
+       ${rest < 0 ? `lost ${rTxt(rest)}` : 'made nothing'}.`
+    : `${esc(best.key)} contributed ${rTxt(bestR)} of the ${rTxt(r.overall.totalR)} total
+       — ${pct(share, 0)} of the result — leaving ${rTxt(rest)} from everything else.`;
+  return `
+    <div class="journal-insight warn-box" style="margin:12px 0 0">
+      <strong>⚠️ One symbol is carrying this.</strong> ${headline}
+      A system carried by a single name hasn't been shown to work; it's shown that one stock
+      moved. Re-run without it and see what's left.
+    </div>`;
+}
+
+function segmentTable(title, rows, keyLabel) {
+  const live = rows.filter((x) => x.scored > 0);
+  if (!live.length) return '';
+  const body = live.map((x) => {
+    const cls = x.avgR > 0 ? 'good' : 'bad';
+    return `<tr>
+      <td><strong>${esc(String(x.key))}</strong></td>
+      <td>${x.scored}</td>
+      <td>${pct(x.winRate, 0)}</td>
+      <td class="${cls}">${rTxt(x.avgR)}</td>
+      <td class="${cls}">${rTxt(x.totalR)}</td>
+      <td>${x.maxDrawdownR != null ? '−' + x.maxDrawdownR + 'R' : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <h3 class="segment-title">${title}</h3>
+    <div class="chain-scroll"><table class="chain-table paper-table">
+      <thead><tr>
+        <th>${keyLabel}</th><th>Trades</th><th>Win rate</th>
+        <th data-tip="Average result per trade in this bucket. This is the number to compare across rows.">Expectancy</th>
+        <th>Total R</th><th>Max DD</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+}
+
+function tradesTable(trades) {
+  const rows = trades.map((t) => {
+    const cls = t.rMultiple == null ? '' : t.rMultiple > 0 ? 'good' : 'bad';
+    const icon = t.outcome === 'target' ? '🎯' : t.outcome === 'stopped' ? '🛑' : '⏳';
+    return `<tr>
+      <td>${esc(t.symbol)}</td>
+      <td>${esc(t.entryDate)}</td>
+      <td>${money(t.entry)}</td>
+      <td>${money(t.exitPrice)}</td>
+      <td>${t.daysHeld}d</td>
+      <td>${esc(t.regime || '—')}</td>
+      <td>${icon}</td>
+      <td class="${cls}">${t.rMultiple != null ? rTxt(t.rMultiple) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="chain-table paper-table">
+    <thead><tr><th>Symbol</th><th>Entered</th><th>Entry</th><th>Exit</th><th>Held</th>
+      <th>Regime</th><th></th><th>R</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function errorsCard(errors) {
+  return `<section class="card"><div class="card-head"><h2>Skipped</h2></div>
+    <ul class="news-list">${errors.map((e) =>
+      `<li>${esc(e.symbol)} — ${esc(e.error)}</li>`).join('')}</ul></section>`;
+}
+
+async function logAllBacktestTrades(r) {
+  const closed = r.trades.filter((t) => t.outcome !== 'open');
+  if (!closed.length) return;
+  if (!window.confirm(
+    `Log ${closed.length} backtest trades to the journal?\n\n` +
+    `They file as replay reps that followed the rules, which is what makes them a baseline ` +
+    `for grading your live trades. Note this will dominate your journal's statistics.`)) return;
+  const btn = $('#bt-log-all');
+  btn.disabled = true;
+  let ok = 0;
+  for (const t of closed) {
+    const riskPS = round2(t.entry - t.stop);
+    const saved = await logTrade({
+      symbol: t.symbol, kind: 'stock', source: 'replay', status: 'closed',
+      entry_style: t.style, entry: t.entry, target: t.target, stop: t.stop, shares: t.shares,
+      risk_per_share: riskPS,
+      planned_risk: riskPS && t.shares ? round2(riskPS * t.shares) : null,
+      reward_risk: riskPS ? round2((t.target - t.entry) / riskPS) : null,
+      thesis: `Backtest: ${t.style} rule, levels as of ${t.asOf}, ${t.regime || 'unknown'} regime.`,
+      entry_price: t.entryPrice, exit_price: t.exitPrice,
+      entry_date: t.entryDate, exit_date: t.exitDate,
+      outcome: t.outcome, followed_rules: true,
+    }, { announce: false });
+    if (saved) ok++;
+    btn.textContent = `Logging ${ok}/${closed.length}…`;
+  }
+  btn.textContent = `✓ Logged ${ok}`;
+}
+
+$('#backtest-btn').addEventListener('click', openBacktest);
 
 // ---------- Settings ----------
 function setKeyPlaceholder(sel, st) {

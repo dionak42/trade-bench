@@ -681,3 +681,23 @@ body {
 .plan-thesis-field { margin-top: 12px; }
 .plan-buttons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
 .plan-buttons .place-btn { margin-top: 0; }
+
+/* ---------- System backtest ---------- */
+.segment-title {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--muted); margin: 18px 0 8px;
+}
+.segment-title:first-of-type { margin-top: 4px; }
+#backtest-controls .calc-inputs { margin: 12px 0; }
+#backtest-controls .primary-btn { margin-top: 4px; }
+
+/* Phone: the two-column input grid and the header button row both need to
+   stack — the app is used from a home-screen icon, not just a desktop. */
+@media (max-width: 640px) {
+  .calc-inputs { grid-template-columns: 1fr; }
+  .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  /* Five tabs no longer fit across a phone — scroll the strip rather than
+     wrapping it, so it still reads as one control. */
+  .view-toggle { display: flex; max-width: 100%; overflow-x: auto; }
+  .view-toggle button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+}

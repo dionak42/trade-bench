@@ -6,6 +6,7 @@ import { getNews, getNextEarnings, searchSymbols } from './finnhub.js';
 import { ivRankFor } from './ivrank.js';
 import { buildAnalysis, scanSymbol, getCoveredCallIdea } from './analysis.js';
 import { runReplay } from './replay.js';
+import { runBacktest } from './backtest.js';
 import {
   getAccount, getPositions, getOrders, placeOrder, cancelOrder, closePosition,
 } from './paper.js';
@@ -93,6 +94,31 @@ router.get('/analysis/:symbol', wrap(async (req, res) => {
 // Historical scenario replay of a stock bracket plan (backtest).
 router.post('/replay/:symbol', wrap(async (req, res) => {
   const result = await runReplay(req.params.symbol.toUpperCase(), req.body ?? {});
+  res.json(result);
+}));
+
+// Run the system across many symbols and years — a sequence of trades rather
+// than one. Slow by nature (one bar fetch per symbol), so the symbol list is
+// capped and every symbol is fetched in parallel.
+router.post('/backtest', wrap(async (req, res) => {
+  const body = req.body ?? {};
+  const symbols = [...new Set(
+    String(body.symbols || '')
+      .split(',').map((x) => x.trim().toUpperCase()).filter(Boolean)
+  )].slice(0, 25);
+  if (!symbols.length) return res.status(400).json({ error: 'Pick at least one symbol.' });
+
+  const years = Math.min(Math.max(Number(body.years) || 3, 1), 5);
+  const result = await runBacktest(symbols, {
+    years,
+    mode: body.mode === 'capital' ? 'capital' : 'risk',
+    accountSize: Number(body.accountSize) || 0,
+    riskPct: Number(body.riskPct) || 1,
+    capital: Number(body.capital) || 0,
+    entryStyle: body.entryStyle === 'breakout' ? 'breakout' : 'pullback',
+    stopAtrMult: Number(body.stopAtrMult) || 2,
+    maxWaitBars: Math.min(Math.max(Number(body.maxWaitBars) || 20, 1), 120),
+  });
   res.json(result);
 }));
 

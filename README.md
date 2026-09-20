@@ -9,6 +9,9 @@ A personal trade-planning and paper-practice tool. Three views per ticker:
   with greeks, upcoming events (earnings + ex-dividends), IV rank, and news.
 - **📈 Paper** — place plans as real orders in an Alpaca **paper account** (stocks via
   bracket orders, plus covered calls / CSPs) and track positions, orders, and P&L.
+- **🧪 Test system** — run your rules across many symbols and years as a *sequence*
+  of trades, then see where they break down: equity curve in R, distribution of
+  results, and splits by symbol, year, and market regime.
 - **📓 Journal** — one row per *decision*: the plan you committed to, what actually happened,
   and whether you followed your own rules. Turns reps into a scoreboard (win rate, expectancy
   in R, discipline rate, worst losing streak).
@@ -39,6 +42,11 @@ reachable by two people over Tailscale — no login, no public internet exposure
 - **IV rank (home-grown)** → snapshots at-the-money IV daily into SQLite; rank becomes
   meaningful after the server has run for a couple of weeks
 - **News panel** → recent headlines, newest first
+- **System backtest** → one trade after another across your whole watchlist, levels
+  re-derived on every trade from that day's bars only (no lookahead). Reports expectancy,
+  profit factor, worst drawdown and worst losing streak, and flags the two things a headline
+  number hides: whether the regime filter actually earns its keep, and whether one symbol is
+  carrying the entire result
 - **Trade journal** → log a plan (or a replay) in one click, record the outcome later, and grade
   yourself on *process, not P&L*. P&L and R-multiple are derived from the plan you committed to,
   never typed in. The headline number is the split between trades where you followed your rules
@@ -164,18 +172,24 @@ small future enhancement.)_
 trade-bench/
 ├── .env                 # API keys (gitignored)
 ├── package.json
+├── SYSTEM.md            # the written trading rules the app is run against
 ├── data/planner.db      # SQLite (auto-created, gitignored)
 ├── server/
 │   ├── index.js         # Express entrypoint, binds 0.0.0.0, IV-snapshot job
-│   ├── routes.js        # /api/quote, /news, /events, /ivrank, /watchlist, /journal
+│   ├── routes.js        # /api/quote, /news, /events, /ivrank, /watchlist, /journal, /backtest
 │   ├── alpaca.js        # price + options chain + dividends
 │   ├── finnhub.js       # news + earnings calendar
+│   ├── analysis.js      # technical scorecard, watchlist scan, news sentiment
+│   ├── replay.js        # the system's rules (deriveLevels/sizePosition) + single replay
+│   ├── backtest.js      # the same rules as a sequence, across symbols and years
+│   ├── paper.js         # Alpaca paper-trading client
 │   ├── ivrank.js        # daily ATM-IV snapshot + rank
 │   └── db.js            # SQLite (watchlist, iv_snapshots, settings, trades)
 └── client/
     ├── index.html
     ├── styles.css
-    ├── app.js           # search, chain, calculators, auto-refresh, target zone
+    ├── app.js           # search, chain, calculators, plan builder, journal, backtest
+    ├── charts.js        # inline-SVG charts (price, payoff, equity curve, histogram)
     ├── help.js          # help modal content + guided tour
     └── tooltip.js       # instant hover tooltips
 ```
