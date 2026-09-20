@@ -1,6 +1,8 @@
 # Trade Bench
 
-A personal trade-planning and paper-practice tool. Three views per ticker:
+A personal trade-planning and paper-practice tool. The home screen reads the
+**market regime** — the tape your tickers trade inside — plus a **macro calendar**
+and a watchlist momentum scan. Then, three views per ticker:
 
 - **🔍 Research** — technical scorecard (trend, RSI, volatility, support/resistance),
   a bracket **trade-plan builder** (entry / target / trailing stop with risk-reward math),
@@ -21,6 +23,9 @@ A personal trade-planning and paper-practice tool. Three views per ticker:
 
 Plus a shared watchlist, an interactive course, and a guided tour. Runs on a Mac mini and is
 reachable by two people over Tailscale — no login, no public internet exposure.
+
+See [`TRADE_IDEA_PRACTICE.md`](TRADE_IDEA_PRACTICE.md) for the working note on how to write a
+trade idea so it can be judged later — the habits the app's planning tools are meant to support.
 
 > Educational tool for planning and practice. Not financial advice.
 
@@ -59,6 +64,15 @@ reachable by two people over Tailscale — no login, no public internet exposure
   yourself on *process, not P&L*. P&L and R-multiple are derived from the plan you committed to,
   never typed in. The headline number is the split between trades where you followed your rules
   and trades where you didn't — the comparison that actually changes behaviour
+- **Market regime panel** (home) → the four major indexes (SPY/QQQ/IWM/DIA) with trend and RSI
+  direction, all 11 sector ETFs ranked by consecutive down weeks, breadth (share of the universe
+  above its 200-day, with the week-over-week direction once history accrues), 52-week highs vs
+  lows, and SPY realized volatility ranked against its own year. Every number is computed from
+  daily bars the app already fetches — no new data provider and no paid breadth feed
+- **Macro calendar** (home) → scheduled market-wide events. High-impact events landing inside an
+  option's expiration get the same ⚠️ treatment as earnings. Pulls Finnhub's economic calendar
+  where the plan includes it, and otherwise falls back to recurring releases plus events you type
+  in yourself — so a date read in a market newsletter becomes a standing flag
 - **Shared watchlist** → both users see the same saved tickers
 - **Learn as you go** → instant hover tooltips on every column and field, a `? Help`
   reference (Quick Start, Covered Calls, Cash-Secured Puts, Reading the Chain, Glossary),
@@ -173,6 +187,21 @@ small future enhancement.)_
   browser tab is hidden). Upgrading Alpaca to real-time data needs no app changes.
 - Earnings dates come from Finnhub's calendar; ex-dividends from Alpaca corporate actions.
   If a company's next dividend hasn't been announced yet, only the last one shows.
+- **Breadth is over the universe the free tier can actually see** — the 11 sector ETFs plus your
+  watchlist — not the S&P 500's members. The panel always states the universe size, because a
+  breadth number without its universe doesn't mean anything. Like IV rank, the week-over-week
+  direction only appears once the server has been running long enough to have history, and it is
+  only shown when the universe hasn't changed size in between (otherwise the move would just be
+  an artifact of adding a ticker).
+- **Volatility is realized, not implied.** There's no free VIX feed here, and the leveraged VIX
+  ETFs decay too much to stand in for the level, so the panel ranks SPY's own 20-day realized
+  volatility against its past year instead. It answers the same question — is this a calm tape
+  or a stressed one — with data that's actually available, and it's labelled as realized
+  throughout so it's never confused with the VIX.
+- **The economic calendar is premium on some Finnhub plans.** When the endpoint returns 403 the
+  app says so plainly rather than showing an empty list, and falls back to the weekly release it
+  can derive with confidence plus anything you've entered by hand. Nothing in the fallback
+  guesses at a release date it can't justify.
 
 ## Project structure
 
@@ -183,16 +212,21 @@ trade-bench/
 ├── SYSTEM.md            # the written trading rules the app is run against
 ├── data/planner.db      # SQLite (auto-created, gitignored)
 ├── server/
-│   ├── index.js         # Express entrypoint, binds 0.0.0.0, IV-snapshot job
-│   ├── routes.js        # /api/quote, /news, /events, /ivrank, /watchlist, /journal, /backtest
+│   ├── index.js         # Express entrypoint, binds 0.0.0.0, daily snapshot jobs
+│   ├── routes.js        # /api/quote, /news, /events, /ivrank, /regime, /econ,
+│   │                    #   /watchlist, /journal, /backtest
 │   ├── alpaca.js        # price + options chain + dividends
-│   ├── finnhub.js       # news + earnings calendar
-│   ├── analysis.js      # technical scorecard, watchlist scan, news sentiment
+│   ├── finnhub.js       # news + earnings + economic calendar
+│   ├── indicators.js    # shared indicator math (SMA, RSI, ATR, realized vol, weekly streaks)
+│   ├── analysis.js      # per-ticker scorecard + watchlist scan
+│   ├── regime.js        # market-wide regime: indexes, sectors, breadth, volatility
+│   ├── econ.js          # macro calendar (feed + recurring rules + your own entries)
 │   ├── replay.js        # the system's rules (deriveLevels/sizePosition) + single replay
 │   ├── backtest.js      # the same rules as a sequence, across symbols and years
 │   ├── paper.js         # Alpaca paper-trading client
 │   ├── ivrank.js        # daily ATM-IV snapshot + rank
-│   └── db.js            # SQLite (watchlist, iv_snapshots, settings, trades)
+│   └── db.js            # SQLite (watchlist, iv_snapshots, settings, trades,
+│                        #   tested_variants, oos_reveals, regime_snapshots, econ_events)
 └── client/
     ├── index.html
     ├── styles.css

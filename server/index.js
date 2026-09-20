@@ -1,11 +1,12 @@
 // Express entrypoint. Binds 0.0.0.0 so it's reachable over Tailscale,
-// serves the static frontend, mounts the API, and runs the IV-snapshot job.
+// serves the static frontend, mounts the API, and runs the daily snapshot jobs.
 import 'dotenv/config';
 import express from 'express';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import apiRouter from './routes.js';
 import { snapshotWatchlistIv } from './ivrank.js';
+import { snapshotRegime } from './regime.js';
 import { getSetting } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,3 +42,13 @@ setTimeout(() => {
     snapshotWatchlistIv().catch((e) => console.error('[iv-snapshot]', e.message));
   }, SIX_HOURS);
 }, 30 * 1000);
+
+// Market-breadth snapshot on the same cadence, so the regime panel can show
+// which way breadth is moving even on days nobody opens the app. Offset from
+// the IV job so the two don't hammer the data API at once.
+setTimeout(() => {
+  snapshotRegime().catch((e) => console.error('[regime-snapshot]', e.message));
+  setInterval(() => {
+    snapshotRegime().catch((e) => console.error('[regime-snapshot]', e.message));
+  }, SIX_HOURS);
+}, 90 * 1000);

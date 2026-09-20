@@ -46,6 +46,38 @@ export async function searchSymbols(query) {
     .map((r) => ({ symbol: r.symbol, description: r.description, type: r.type }));
 }
 
+// Economic calendar (CPI, FOMC, payrolls, PMI...). This endpoint is NOT on
+// every Finnhub plan — the free tier commonly returns 403. Rather than
+// swallowing that, we report it so the UI can say why the list is empty and
+// point at the manual fallback.
+export async function getEconomicCalendar(fromDate, toDate) {
+  const url = `${BASE}/calendar/economic?from=${fromDate}&to=${toDate}&token=${token()}`;
+  const res = await fetch(url);
+  if (res.status === 403 || res.status === 401) {
+    return { available: false, reason: 'plan', events: [] };
+  }
+  if (!res.ok) {
+    return { available: false, reason: `http_${res.status}`, events: [] };
+  }
+  const json = await res.json();
+  const rows = json?.economicCalendar ?? json?.result ?? [];
+  if (!Array.isArray(rows)) return { available: false, reason: 'shape', events: [] };
+  const events = rows
+    .filter((r) => !r.country || r.country === 'US')
+    .map((r) => ({
+      date: String(r.time || '').slice(0, 10),
+      time: String(r.time || '').slice(11, 16) || null,
+      title: r.event || 'Economic release',
+      impact: String(r.impact || '').toLowerCase() || 'medium',
+      estimate: r.estimate ?? null,
+      prev: r.prev ?? null,
+      unit: r.unit ?? null,
+      source: 'finnhub',
+    }))
+    .filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date));
+  return { available: true, reason: null, events };
+}
+
 // Next scheduled earnings date (within ~4 months), plus estimates.
 // hour: "amc" = after close, "bmo" = before open, "dmh" = during hours.
 export async function getNextEarnings(symbol) {

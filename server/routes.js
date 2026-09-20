@@ -7,6 +7,8 @@ import { ivRankFor } from './ivrank.js';
 import { buildAnalysis, scanSymbol, getCoveredCallIdea } from './analysis.js';
 import { runReplay } from './replay.js';
 import { runBacktest } from './backtest.js';
+import { buildRegime } from './regime.js';
+import { getMacroCalendar } from './econ.js';
 import {
   getAccount, getPositions, getOrders, placeOrder, cancelOrder, closePosition,
 } from './paper.js';
@@ -14,6 +16,7 @@ import {
   listWatchlist, addWatchlist, removeWatchlist, getSetting, setSetting,
   listTrades, createTrade, updateTrade, deleteTrade, tradeStats,
   variantSignature, recordVariant, variantStats, recordOosReveal, oosRevealStats,
+  addEconEvent, removeEconEvent,
 } from './db.js';
 import { cfg } from './config.js';
 
@@ -84,6 +87,34 @@ router.get('/scan', wrap(async (req, res) => {
 router.get('/cc/:symbol', wrap(async (req, res) => {
   const idea = await getCoveredCallIdea(req.params.symbol.toUpperCase());
   res.json(idea || { annualized: null });
+}));
+
+// Market regime: index trends, sector streaks, breadth, volatility. Cached
+// server-side (~15 min) because one build touches ~20 symbols.
+router.get('/regime', wrap(async (req, res) => {
+  res.json(await buildRegime({ force: req.query.force === '1' }));
+}));
+
+// ---- Macro calendar ----
+router.get('/econ', wrap(async (req, res) => {
+  const days = Math.min(Math.max(Number(req.query.days) || 45, 1), 180);
+  res.json(await getMacroCalendar({ days }));
+}));
+
+router.post('/econ', wrap(async (req, res) => {
+  const { date, title, time, impact, notes } = req.body ?? {};
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(String(date))) {
+    return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
+  }
+  if (!title || !String(title).trim()) {
+    return res.status(400).json({ error: 'title is required' });
+  }
+  res.status(201).json({ event: addEconEvent({ date, title, time, impact, notes }) });
+}));
+
+router.delete('/econ/:id', wrap(async (req, res) => {
+  removeEconEvent(req.params.id);
+  res.status(204).end();
 }));
 
 // Technical scorecard + news sentiment (decision support, not advice).

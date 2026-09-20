@@ -36,6 +36,18 @@ const HELP = {
     stay on your machine.</p>`,
 
   research: `
+    <h3>Before the ticker: the home screen</h3>
+    <p><strong>Market Regime</strong> reads the tape your stock trades inside — the four major
+    indexes, which sectors are on losing streaks, how many names are above their 200-day
+    (breadth), and whether volatility is calm or stressed. It's context, not a signal: it
+    doesn't size a position or tell you to trade, it tells you which way to lean when you read
+    everything below. A breakout with breadth falling underneath it is a different trade from
+    the same breakout in a healthy market.</p>
+    <p><strong>Macro Calendar</strong> lists scheduled market-wide events. Anything high-impact
+    that falls before your option's expiration gets flagged in the calculator, exactly like an
+    earnings date. Read a date in a market newsletter? Type it in once and the app will keep
+    flagging it for you.</p>
+
     <h3>The Research view</h3>
     <p>Everything you need to size up a stock and plan a buy.</p>
 
@@ -159,6 +171,17 @@ const HELP = {
       the seller you simply keep the premium. That's usually the outcome you're hoping for.</dd>
       <dt>Annualized return</dt><dd>The period return scaled to a full year, so trades of different lengths compare fairly.</dd>
       <dt>Ex-dividend date</dt><dd>Own the stock before this date to get the dividend. Raises early-assignment risk on calls.</dd>
+      <dt>Market regime</dt><dd>The condition of the overall market your stock trades inside —
+      index trends, sector streaks, breadth, and volatility taken together. The same breakout
+      means something different in a healthy tape than in a weakening one.</dd>
+      <dt>Breadth</dt><dd>How many stocks are participating, measured here as the share of a
+      universe trading above its own 200-day average. An index can grind higher on a handful of
+      big names while breadth falls underneath it — that's a market getting narrower.</dd>
+      <dt>Realized vs implied volatility</dt><dd>Realized is how much a stock <em>actually</em>
+      moved; implied (IV) is how much the options market expects it to move. The regime panel
+      shows SPY's realized vol, ranked against its own last year.</dd>
+      <dt>Down-week streak</dt><dd>Consecutive weeks a sector has closed lower. A long streak
+      says the weakness is persistent rather than a single bad session.</dd>
     </dl>`,
 };
 

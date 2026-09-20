@@ -8,6 +8,10 @@ the bottom — that section matters as much as the rules themselves.
 
 > This is my own operating document for a personal account. Not advice to anyone else.
 
+Companion doc: [`TRADE_IDEA_PRACTICE.md`](TRADE_IDEA_PRACTICE.md) covers how to *write*
+an individual trade idea so it can be judged later. This file is the standing rules
+those ideas get held to — when they disagree, this one wins.
+
 ---
 
 ## The rules

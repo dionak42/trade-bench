@@ -25,6 +25,8 @@ const state = {
   backtestStyle: 'pullback', backtestResult: null,
   entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
+  regime: null,      // market-wide context (indexes, sectors, breadth, vol)
+  econ: null,        // { events, feed } macro calendar
 };
 
 const REFRESH_MS = 60 * 1000;
@@ -62,13 +64,28 @@ const dteOf = (expiration) => {
 };
 const daysUntil = (dateStr) => Math.round((new Date(dateStr + 'T00:00:00Z') - new Date(todayStr() + 'T00:00:00Z')) / 86400000);
 
+// High-impact macro events between now and an expiration. A CPI print or an
+// FOMC decision inside your option's life is the same kind of risk as an
+// earnings report — it just isn't attached to the ticker.
+function macroInWindow(expiration) {
+  return (state.econ?.events || []).filter(
+    (e) => e.date >= todayStr() && e.date <= expiration
+      && (e.impact === 'high' || e.source === 'manual')
+  );
+}
+
 // Does an event fall inside [today, expiration]?
-function eventInWindow(expiration) {
+// `includeMacro` is off for the chain's per-row ⚠️: a macro date lands inside
+// every contract at a given expiration, so flagging each row would drown out
+// the marker's real job — telling you THIS ticker has an event coming. The
+// calculator still warns about macro, where there's room to name it.
+function eventInWindow(expiration, { includeMacro = true } = {}) {
   const flags = [];
   const e = state.events?.earnings;
   if (e?.date && e.date >= todayStr() && e.date <= expiration) flags.push('earnings');
   const d = state.events?.dividend;
   if (d?.upcoming && d.exDate >= todayStr() && d.exDate <= expiration) flags.push('dividend');
+  if (includeMacro && macroInWindow(expiration).length) flags.push('macro');
   return flags;
 }
 
@@ -80,6 +97,8 @@ async function loadSymbol(sym) {
   state.selected = null;
   $('#empty-state').classList.add('hidden');
   $('#scan-panel').classList.add('hidden');
+  $('#regime-panel').classList.add('hidden');
+  $('#macro-panel').classList.add('hidden');
   $('#content').classList.remove('hidden');
   $('#ticker-header').classList.remove('hidden');
   $('#view-toggle').classList.remove('hidden');
@@ -260,7 +279,7 @@ function renderChain() {
     const spTxt = sp == null ? 'wide' : pct(sp, 0);
     const prob = c.delta != null ? `${Math.abs(c.delta * 100).toFixed(0)}%` : '—';
     const deltaTxt = c.delta != null ? num(c.delta) : '—';
-    const flags = eventInWindow(c.expiration);
+    const flags = eventInWindow(c.expiration, { includeMacro: false });
     const ad = c.delta != null ? Math.abs(c.delta) : null;
     const inZone = state.showTargetZone && ad != null && ad >= 0.20 && ad <= 0.35;
     const isBest = c.occSymbol === bestZoneOcc;
@@ -505,6 +524,10 @@ function warningHtml(flags) {
   const parts = [];
   if (flags.includes('earnings')) parts.push('⚠️ Earnings report before expiration — expect a volatility spike.');
   if (flags.includes('dividend')) parts.push('💰 Ex-dividend before expiration — raises early-assignment risk.');
+  if (flags.includes('macro') && state.expiration) {
+    const names = macroInWindow(state.expiration).slice(0, 3).map((e) => `${esc(e.title)} (${e.date})`);
+    parts.push(`🏛️ Macro event before expiration — ${names.join(', ')}.`);
+  }
   return `<div class="calc-warning">${parts.join('<br>')}</div>`;
 }
 
@@ -547,7 +570,24 @@ function renderEvents() {
         <div class="countdown">${dv.upcoming ? d + 'd' : ''}</div>
       </div>`);
   }
-  body.innerHTML = rows.join('') || `<div class="event-none">No scheduled earnings or dividends found in the next ~4 months.</div>`;
+
+  // Macro events sit in the same list: they hit this position just as hard as
+  // an earnings date, they just aren't attached to the ticker.
+  for (const m of (state.econ?.events || []).filter((e) => e.impact === 'high' || e.source === 'manual').slice(0, 5)) {
+    const d = daysUntil(m.date);
+    const inWindow = state.expiration && m.date <= state.expiration;
+    rows.push(`
+      <div class="event-row${inWindow ? ' event-row-flag' : ''}">
+        <span class="icon">🏛️</span>
+        <div class="main">
+          <div class="title">${esc(m.title)} — ${m.date}</div>
+          <div class="meta">Market-wide${m.time ? ` · ${esc(m.time)} ET` : ''}${m.source === 'manual' ? ' · added by you' : ''}${inWindow ? ' · inside your expiration' : ''}</div>
+        </div>
+        <div class="countdown">${d}d</div>
+      </div>`);
+  }
+
+  body.innerHTML = rows.join('') || `<div class="event-none">No scheduled earnings, dividends, or macro events found ahead.</div>`;
 }
 
 // ---------- News ----------
@@ -1087,6 +1127,8 @@ function openPaper() {
   const hasSymbol = Boolean(state.symbol);
   $('#empty-state').classList.add('hidden');
   $('#scan-panel').classList.add('hidden');
+  $('#regime-panel').classList.add('hidden');
+  $('#macro-panel').classList.add('hidden');
   $('#content').classList.remove('hidden');
   $('#ticker-header').classList.toggle('hidden', !hasSymbol);
   $('#view-toggle').classList.toggle('hidden', !hasSymbol);
@@ -1229,6 +1271,8 @@ function openJournal() {
   const hasSymbol = Boolean(state.symbol);
   $('#empty-state').classList.add('hidden');
   $('#scan-panel').classList.add('hidden');
+  $('#regime-panel').classList.add('hidden');
+  $('#macro-panel').classList.add('hidden');
   $('#content').classList.remove('hidden');
   $('#ticker-header').classList.toggle('hidden', !hasSymbol);
   $('#view-toggle').classList.toggle('hidden', !hasSymbol);
@@ -1534,6 +1578,8 @@ function openBacktest() {
   const hasSymbol = Boolean(state.symbol);
   $('#empty-state').classList.add('hidden');
   $('#scan-panel').classList.add('hidden');
+  $('#regime-panel').classList.add('hidden');
+  $('#macro-panel').classList.add('hidden');
   $('#content').classList.remove('hidden');
   $('#ticker-header').classList.toggle('hidden', !hasSymbol);
   $('#view-toggle').classList.toggle('hidden', !hasSymbol);
@@ -2239,6 +2285,225 @@ async function renderScan() {
   } catch { /* keep prior content on error */ }
 }
 
+// ---------- Market regime (home dashboard) ----------
+// Every other signal in this app is about one ticker. This is the tape those
+// tickers trade inside — a breakout with breadth rolling over underneath it
+// is a different trade from the same breakout in a healthy market.
+const TONE_CLASS = { 'Risk-on': 'good', 'Risk-off': 'bad', Mixed: 'warn' };
+
+function regimeIndexTile(i) {
+  const cls = i.trendLabel === 'Uptrend' ? 'good' : i.trendLabel === 'Downtrend' ? 'bad' : 'warn';
+  const vs = i.vsSma50 == null ? '—'
+    : `${i.vsSma50 >= 0 ? '+' : ''}${(i.vsSma50 * 100).toFixed(1)}% vs 50-day`;
+  return `
+    <div class="rg-tile">
+      <div class="rg-tile-head"><span class="rg-sym">${esc(i.symbol)}</span><span class="rg-name">${esc(i.name)}</span></div>
+      <div class="rg-tile-value ${cls}">${esc(i.trendLabel)}</div>
+      <div class="rg-tile-sub">RSI ${i.rsi14 ?? '—'} ${dirBadge(i.direction)}<br>${vs}</div>
+    </div>`;
+}
+
+function regimeStatTiles(r) {
+  const tiles = [];
+  const b = r.breadth;
+  if (b) {
+    const cls = b.abovePct >= 0.55 ? 'good' : b.abovePct < 0.45 ? 'bad' : 'warn';
+    let sub = `${b.above} of ${b.universeSize} names above their 200-day`;
+    if (b.change) {
+      const arrow = b.change.delta >= 0 ? '▲' : '▼';
+      sub += `<br><span class="${b.change.delta >= 0 ? 'good' : 'bad'}">${arrow} from ${(b.change.from * 100).toFixed(0)}% on ${b.change.since}</span>`;
+    } else {
+      sub += '<br><span class="muted">direction shows once a week of history builds</span>';
+    }
+    tiles.push(`
+      <div class="rg-tile">
+        <div class="rg-tile-head"><span class="rg-sym">Breadth</span>
+          <span class="rg-name" data-tip="The share of a universe trading above its own 200-day average. Falling breadth means fewer names are carrying the market — an index can hold up while most stocks underneath it weaken. This universe is the 11 sector ETFs plus your watchlist, NOT the S&P 500's members.">what&rsquo;s participating</span></div>
+        <div class="rg-tile-value ${cls}">${pct(b.abovePct, 0)}</div>
+        <div class="rg-tile-sub">${sub}</div>
+      </div>`);
+    tiles.push(`
+      <div class="rg-tile">
+        <div class="rg-tile-head"><span class="rg-sym">Highs / Lows</span>
+          <span class="rg-name" data-tip="Names in the universe printing a new 52-week high versus a new 52-week low today. Lows outnumbering highs while the index holds up is classic late-stage weakness.">52-week</span></div>
+        <div class="rg-tile-value ${b.newHighs >= b.newLows ? 'good' : 'bad'}">${b.newHighs} / ${b.newLows}</div>
+        <div class="rg-tile-sub">new highs vs new lows<br>across ${b.universeSize} names</div>
+      </div>`);
+  }
+  const v = r.volatility;
+  if (v) {
+    const cls = v.label === 'Calm' ? 'good' : v.label === 'Stressed' ? 'bad' : 'warn';
+    tiles.push(`
+      <div class="rg-tile">
+        <div class="rg-tile-head"><span class="rg-sym">Volatility</span>
+          <span class="rg-name" data-tip="SPY's own realized (actual) volatility over the last 20 sessions, ranked against the past year. This is realized vol, not the VIX — the VIX is implied, meaning what options price in. Low realized vol while breadth falls is the setup where protection is cheap and few people want it.">${esc(v.basis)}</span></div>
+        <div class="rg-tile-value ${cls}">${esc(v.label)}</div>
+        <div class="rg-tile-sub">${pct(v.realizedVol20d, 1)} annualized${v.percentile != null ? `<br>${pct(v.percentile, 0)} of the last year was lower` : ''}</div>
+      </div>`);
+  }
+  return tiles.join('');
+}
+
+function regimeSectorChip(s) {
+  const cls = s.downWeeks >= 4 ? 'bad' : s.downWeeks >= 2 ? 'warn' : 'good';
+  const streak = s.downWeeks > 0
+    ? `${s.downWeeks}w down${s.partialWeek ? '*' : ''}`
+    : s.weekChange != null && s.weekChange >= 0 ? 'holding' : 'flat';
+  const wk = s.weekChange == null ? '' : ` · ${s.weekChange >= 0 ? '+' : ''}${(s.weekChange * 100).toFixed(1)}%`;
+  return `
+    <button type="button" class="rg-sector ${cls}" data-symbol="${esc(s.symbol)}"
+      data-tip="${esc(s.name)} — ${s.downWeeks} consecutive down week(s)${s.aboveSma200 === false ? ', below its 200-day' : ''}. Click to research the ETF.">
+      <span class="rg-sector-sym">${esc(s.symbol)}</span>
+      <span class="rg-sector-streak">${streak}${wk}</span>
+    </button>`;
+}
+
+function renderRegime(r) {
+  const panel = $('#regime-panel');
+  const tone = TONE_CLASS[r.summary.tone] || 'warn';
+  const partial = r.sectors.some((s) => s.partialWeek);
+  panel.innerHTML = `
+    <section class="card">
+      <div class="card-head">
+        <h2>Market Regime</h2>
+        <span class="rg-badges">
+          <span class="rg-tone ${tone}">${esc(r.summary.tone)}</span>
+          <span class="not-advice" data-tip="A read of the overall tape assembled from index trends, sector streaks, breadth, and volatility. It is context for the signals below — it does not size a position or tell you to trade.">Context, not a signal</span>
+        </span>
+        <button id="regime-refresh" class="ghost-btn" type="button" title="Recompute now">↻ Refresh</button>
+      </div>
+      <p class="rg-summary">${r.summary.notes.map(esc).join(' · ')}</p>
+      <div class="rg-tiles">${r.indexes.map(regimeIndexTile).join('')}</div>
+      <div class="rg-tiles">${regimeStatTiles(r)}</div>
+      <div class="rg-sectors-head">Sector streaks — weakest first</div>
+      <div class="rg-sectors">${r.sectors.map(regimeSectorChip).join('')}</div>
+      <p class="hint">
+        ${partial ? 'An asterisk marks a week still in progress. ' : ''}Breadth covers the 11 sector
+        ETFs plus your watchlist (${r.breadth ? r.breadth.universeSize : 0} names) — it is not the
+        S&amp;P 500&rsquo;s internals. Click a sector to research it.
+      </p>
+    </section>`;
+
+  panel.querySelectorAll('.rg-sector').forEach((b) =>
+    b.addEventListener('click', () => { $('#search-input').value = b.dataset.symbol; loadSymbol(b.dataset.symbol); }));
+  const rb = $('#regime-refresh');
+  if (rb) rb.addEventListener('click', () => loadRegime({ force: true }));
+}
+
+async function loadRegime({ force = false } = {}) {
+  const panel = $('#regime-panel');
+  if (!panel) return;
+  if (state.symbol) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  if (!panel.innerHTML || force) {
+    panel.innerHTML = '<section class="card"><div class="loading">Reading the tape — indexes, sectors, breadth…</div></section>';
+  }
+  try {
+    const r = await api(`/regime${force ? '?force=1' : ''}`);
+    state.regime = r;
+    renderRegime(r);
+  } catch (err) {
+    panel.innerHTML = `
+      <section class="card">
+        <div class="card-head"><h2>Market Regime</h2></div>
+        <p class="hint">Couldn&rsquo;t read the tape: ${esc(err.message)}</p>
+      </section>`;
+  }
+}
+
+// ---------- Macro calendar ----------
+const IMPACT_CLASS = { high: 'bad', medium: 'warn', low: 'muted' };
+
+function renderMacro(cal) {
+  const panel = $('#macro-panel');
+  if (!panel) return;
+  const rows = cal.events.slice(0, 12).map((e) => {
+    const d = daysUntil(e.date);
+    return `
+      <div class="mc-row">
+        <div class="mc-date">${e.date}<span class="mc-when">${d === 0 ? 'today' : `${d}d`}</span></div>
+        <div class="mc-main">
+          <div class="mc-title">${esc(e.title)}</div>
+          <div class="mc-meta">
+            <span class="${IMPACT_CLASS[e.impact] || 'muted'}">${esc(e.impact)} impact</span>
+            ${e.time ? ` · ${esc(e.time)} ET` : ''}
+            ${e.estimate != null ? ` · est. ${esc(String(e.estimate))}` : ''}
+            ${e.prev != null ? ` · prev ${esc(String(e.prev))}` : ''}
+            ${e.source === 'manual' ? ' · <span class="muted">added by you</span>' : ''}
+            ${e.source === 'rule' ? ' · <span class="muted">recurring weekly release</span>' : ''}
+            ${e.notes ? ` · ${esc(e.notes)}` : ''}
+          </div>
+        </div>
+        ${e.source === 'manual' ? `<button class="mc-remove" data-id="${e.id}" title="Remove">✕</button>` : '<span></span>'}
+      </div>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <section class="card">
+      <div class="card-head">
+        <h2>Macro Calendar</h2>
+        <span class="not-advice" data-tip="Scheduled market-wide events. Anything marked high impact that falls before your option&rsquo;s expiration gets flagged in the calculator, exactly like an earnings date. Scheduled releases are listed ${cal.horizonDays} days out; events you add yourself are always shown, however far ahead they are.">Upcoming</span>
+      </div>
+      ${cal.feed.note ? `<p class="mc-note">${esc(cal.feed.note)}</p>` : ''}
+      <div class="mc-list">${rows || '<div class="event-none">Nothing scheduled in this window.</div>'}</div>
+      <form id="macro-form" class="mc-form">
+        <input id="mc-date" type="date" aria-label="Event date" required />
+        <input id="mc-title" placeholder="Event (e.g. FOMC decision)" aria-label="Event title" required />
+        <select id="mc-impact" aria-label="Impact">
+          <option value="high">High impact</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <button type="submit">Add</button>
+      </form>
+      <p class="hint">Read a date in a market newsletter? Add it once here and the option
+        calculators will flag it whenever it lands inside an expiration you&rsquo;re planning.</p>
+    </section>`;
+
+  panel.querySelectorAll('.mc-remove').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      await api(`/econ/${btn.dataset.id}`, { method: 'DELETE' });
+      loadMacro();
+    }));
+
+  const form = $('#macro-form');
+  if (form) {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const date = $('#mc-date').value;
+      const title = $('#mc-title').value.trim();
+      if (!date || !title) return;
+      try {
+        await api('/econ', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date, title, impact: $('#mc-impact').value }),
+        });
+        loadMacro();
+      } catch (err) {
+        alert(`Couldn’t add that event: ${err.message}`);
+      }
+    });
+  }
+}
+
+// Loaded on the home screen AND behind a loaded ticker, since the option
+// calculators need it to flag macro events inside an expiration.
+async function loadMacro() {
+  try {
+    const cal = await api('/econ');
+    state.econ = cal;
+    if (!state.symbol) {
+      $('#macro-panel').classList.remove('hidden');
+      renderMacro(cal);
+    } else if (state.view === 'planner') {
+      renderEvents();
+    }
+  } catch {
+    $('#macro-panel').classList.add('hidden');
+  }
+}
+
 function goHome() {
   state.symbol = null;
   clearInterval(refreshTimer);
@@ -2247,6 +2512,8 @@ function goHome() {
   $('#empty-state').classList.remove('hidden');
   setRefreshStatus('—');
   loadWatchlist().catch(() => {});
+  loadRegime().catch(() => {});
+  loadMacro().catch(() => {});
 }
 $('#brand-home').addEventListener('click', goHome);
 
@@ -2268,4 +2535,6 @@ async function refreshSettingsCache() {
 }
 
 loadWatchlist().catch(() => {});
+loadRegime().catch(() => {});
+loadMacro().catch(() => {});
 refreshSettingsCache();

@@ -2,43 +2,7 @@
 // daily bars and headlines — objective signals only, never a recommendation.
 import { getDailyBars, getUnderlyingPrice, getOptionsChain } from './alpaca.js';
 import { getNews } from './finnhub.js';
-
-// ---- Indicator helpers ----
-function sma(values, period) {
-  if (values.length < period) return null;
-  const slice = values.slice(-period);
-  return slice.reduce((a, b) => a + b, 0) / period;
-}
-
-// Wilder's RSI.
-function rsi(closes, period = 14) {
-  if (closes.length < period + 1) return null;
-  let gains = 0;
-  let losses = 0;
-  for (let i = closes.length - period; i < closes.length; i++) {
-    const diff = closes[i] - closes[i - 1];
-    if (diff >= 0) gains += diff;
-    else losses -= diff;
-  }
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
-  if (avgLoss === 0) return 100;
-  const rs = avgGain / avgLoss;
-  return 100 - 100 / (1 + rs);
-}
-
-// Average True Range (volatility).
-function atr(bars, period = 14) {
-  if (bars.length < period + 1) return null;
-  const trs = [];
-  for (let i = 1; i < bars.length; i++) {
-    const h = bars[i].h;
-    const l = bars[i].l;
-    const prevC = bars[i - 1].c;
-    trs.push(Math.max(h - l, Math.abs(h - prevC), Math.abs(l - prevC)));
-  }
-  return sma(trs, period);
-}
+import { sma, smaAt, rsi, rsiEndingAt, atr } from './indicators.js';
 
 // ---- News sentiment (lexicon-based, no LLM) ----
 const POS = ['beat', 'beats', 'surge', 'surges', 'soar', 'soars', 'rally', 'rallies',
@@ -69,19 +33,6 @@ function scoreSentiment(headlines) {
   return { label, net, positiveHits: pos, negativeHits: neg, headlineCount: headlines.length };
 }
 
-// RSI ending at a given index (for direction), shared by scan.
-function rsiEndingAt(closes, end, period = 14) {
-  if (end < period) return null;
-  let g = 0, l = 0;
-  for (let i = end - period + 1; i <= end; i++) {
-    const diff = closes[i] - closes[i - 1];
-    if (diff >= 0) g += diff; else l -= diff;
-  }
-  const ag = g / period, al = l / period;
-  if (al === 0) return 100;
-  return 100 - 100 / (1 + ag / al);
-}
-
 // Lightweight scan for the watchlist dashboard: trend, momentum direction,
 // and golden/death-cross status — no news call, so it's fast across a list.
 export async function scanSymbol(symbol) {
@@ -100,12 +51,6 @@ export async function scanSymbol(symbol) {
     else if (rsiChange < -2) direction = 'falling';
   }
 
-  const smaAt = (arr, i, p) => {
-    if (i + 1 < p) return null;
-    let s = 0;
-    for (let k = i - p + 1; k <= i; k++) s += arr[k];
-    return s / p;
-  };
   const N = Math.min(bars.length, 130);
   let cross = null, prevDiff = null;
   for (let i = bars.length - N; i < bars.length; i++) {
@@ -214,17 +159,7 @@ export async function buildAnalysis(symbol) {
   }
 
   // RSI over time, so you can see whether momentum is rising or falling.
-  const rsiAt = (end, period = 14) => {
-    if (end < period) return null;
-    let g = 0, l = 0;
-    for (let i = end - period + 1; i <= end; i++) {
-      const diff = closes[i] - closes[i - 1];
-      if (diff >= 0) g += diff; else l -= diff;
-    }
-    const ag = g / period, al = l / period;
-    if (al === 0) return 100;
-    return 100 - 100 / (1 + ag / al);
-  };
+  const rsiAt = (end) => rsiEndingAt(closes, end);
   const rsiSeries = [];
   for (let i = Math.max(14, closes.length - 30); i < closes.length; i++) {
     const v = rsiAt(i);
@@ -242,12 +177,6 @@ export async function buildAnalysis(symbol) {
   const sentiment = scoreSentiment(news.map((n) => n.headline || ''));
 
   // Price series for the chart: last ~130 sessions with rolling MAs.
-  const smaAt = (arr, i, p) => {
-    if (i + 1 < p) return null;
-    let s = 0;
-    for (let k = i - p + 1; k <= i; k++) s += arr[k];
-    return s / p;
-  };
   const N = Math.min(bars.length, 130);
   const series = [];
   for (let i = bars.length - N; i < bars.length; i++) {
