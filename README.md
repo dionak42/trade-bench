@@ -15,6 +15,9 @@ and a watchlist momentum scan. Then, three views per ticker:
 Plus a shared watchlist, an interactive course, and a guided tour. Runs on a Mac mini and is
 reachable by two people over Tailscale — no login, no public internet exposure.
 
+See [`TRADE_IDEA_PRACTICE.md`](TRADE_IDEA_PRACTICE.md) for the working note on how to write a
+trade idea so it can be judged later — the habits the app's planning tools are meant to support.
+
 > Educational tool for planning and practice. Not financial advice.
 
 ## Stack
