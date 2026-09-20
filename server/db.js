@@ -342,6 +342,7 @@ export function variantSignature(params = {}) {
     maxWaitBars: Number(params.maxWaitBars ?? 20),
     years: Number(params.years ?? 3),
     splitDate: params.splitDate ?? null,
+    validationDate: params.validationDate ?? null,
   });
 }
 

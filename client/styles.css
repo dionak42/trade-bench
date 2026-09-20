@@ -705,3 +705,20 @@ body {
 .holdout-card { border-left: 3px solid var(--accent); }
 .holdout-card .primary-btn { margin-top: 12px; }
 .holdout-card p { font-size: 13.5px; line-height: 1.6; margin: 0 0 8px; }
+
+.validation-card { border-left: 3px solid var(--warn); }
+
+/* The three windows as one strip, so the split is obvious at a glance. */
+.window-strip { display: flex; gap: 8px; margin: 4px 0 14px; flex-wrap: wrap; }
+.window-seg {
+  flex: 1 1 140px; border-radius: 10px; padding: 10px 12px;
+  background: var(--surface-alt); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.window-seg span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 700; }
+.window-seg strong { font-size: 20px; line-height: 1.1; }
+.window-seg em { font-style: normal; font-weight: 700; font-size: 13px; }
+.window-seg small { font-size: 11px; color: var(--muted); }
+.window-seg.dev { border-left: 3px solid var(--muted); }
+.window-seg.val { border-left: 3px solid var(--warn); }
+.window-seg.oos { border-left: 3px solid var(--accent); }

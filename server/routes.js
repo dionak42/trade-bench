@@ -111,18 +111,22 @@ router.post('/backtest', wrap(async (req, res) => {
 
   const years = Math.min(Math.max(Number(body.years) || 3, 1), 5);
 
-  // The held-out window is the most recent slice: you develop on older data
-  // and validate on newer, never the reverse.
-  const holdoutMonths = Math.min(Math.max(Number(body.holdoutMonths ?? 12), 0), 36);
-  let splitDate = null;
-  if (holdoutMonths > 0) {
+  // Newest data is held back, oldest is developed on — never the reverse.
+  // The validation window sits between the two.
+  const monthsAgo = (n) => {
     const d = new Date();
-    d.setUTCMonth(d.getUTCMonth() - holdoutMonths);
-    splitDate = d.toISOString().slice(0, 10);
-  }
+    d.setUTCMonth(d.getUTCMonth() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const holdoutMonths = Math.min(Math.max(Number(body.holdoutMonths ?? 12), 0), 36);
+  const validationMonths = Math.min(Math.max(Number(body.validationMonths ?? 0), 0), 36);
+  const splitDate = holdoutMonths > 0 ? monthsAgo(holdoutMonths) : null;
+  const validationDate = validationMonths > 0
+    ? monthsAgo(holdoutMonths + validationMonths)
+    : null;
 
   const params = {
-    years, splitDate,
+    years, splitDate, validationDate,
     mode: body.mode === 'capital' ? 'capital' : 'risk',
     accountSize: Number(body.accountSize) || 0,
     riskPct: Number(body.riskPct) || 1,

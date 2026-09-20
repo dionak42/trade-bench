@@ -12,8 +12,9 @@ A personal trade-planning and paper-practice tool. Three views per ticker:
 - **🧪 Test system** — run your rules across many symbols and years as a *sequence*
   of trades, then see where they break down: equity curve in R, distribution of
   results, rolling-window stability, and splits by symbol, year, and market regime.
-  The most recent months are **held back and sealed** — you develop against the older
-  data, and unseal the rest once, as a real out-of-sample test.
+  History splits three ways: **development** to iterate on, a **validation** window to
+  check changes against, and a **sealed** window you unseal once as a real
+  out-of-sample test.
 - **📓 Journal** — one row per *decision*: the plan you committed to, what actually happened,
   and whether you followed your own rules. Turns reps into a scoreboard (win rate, expectancy
   in R, discipline rate, worst losing streak).
@@ -49,10 +50,11 @@ reachable by two people over Tailscale — no login, no public internet exposure
   profit factor, worst drawdown and worst losing streak, and flags the two things a headline
   number hides: whether the regime filter actually earns its keep, and whether one symbol is
   carrying the entire result
-- **Out-of-sample discipline** → the held-out window's results are kept on the server and
+- **Out-of-sample discipline** → the sealed window's results are kept on the server and
   never sent to the browser until you explicitly unseal them. Every look is logged, and every
   distinct rule configuration you try is counted — because the more variants you test, the
-  more the best-scoring one owes to luck
+  more the best-scoring one owes to luck. The validation window in between is the one you
+  iterate against, so adjusting rules never has to spend the sealed one
 - **Trade journal** → log a plan (or a replay) in one click, record the outcome later, and grade
   yourself on *process, not P&L*. P&L and R-multiple are derived from the plan you committed to,
   never typed in. The headline number is the split between trades where you followed your rules

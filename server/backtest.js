@@ -195,7 +195,12 @@ const WARMUP_DAYS = 300;
 // `fetchBars` is injectable so the whole pipeline can be exercised against
 // deterministic synthetic history in tests, without a live data feed.
 export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) {
-  const { years = 3, splitDate = null } = opts;
+  // Three windows, oldest to newest:
+  //   development  — iterate here as much as you like, that's what it's for
+  //   validation   — check candidate rules; degrades slowly with repeated use
+  //   held out     — the final test, sealed, meant to be opened once
+  // `validationDate` starts the middle window; `splitDate` starts the sealed one.
+  const { years = 3, splitDate = null, validationDate = null } = opts;
   const days = Math.round(years * 365) + WARMUP_DAYS;
   const all = [];
   const perSymbol = [];
@@ -218,10 +223,15 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
     all.push(...r.trades);
   }
 
-  // Split the record in two. Everything the caller develops against comes from
-  // the in-sample side; the out-of-sample side is only evidence for as long as
-  // it stays unlooked-at, so the route decides whether to hand it over.
-  const inSample = splitDate ? all.filter((t) => t.entryDate < splitDate) : all;
+  // A validation window only exists if it sits before the sealed one.
+  const valStart = validationDate && (!splitDate || validationDate < splitDate)
+    ? validationDate : null;
+  const devEnd = valStart || splitDate;
+
+  const inSample = devEnd ? all.filter((t) => t.entryDate < devEnd) : all;
+  const valTrades = valStart
+    ? all.filter((t) => t.entryDate >= valStart && (!splitDate || t.entryDate < splitDate))
+    : [];
   const oosTrades = splitDate ? all.filter((t) => t.entryDate >= splitDate) : [];
 
   const overall = summarise(inSample);
@@ -243,8 +253,9 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
     : null;
 
   return {
-    params: { symbols, years, splitDate, ...opts },
+    params: { symbols, years, splitDate, validationDate: valStart, ...opts },
     splitDate,
+    validationDate: valStart,
     overall,
     bySymbol: perSymbol.sort((a, b) => (b.totalR ?? -999) - (a.totalR ?? -999)),
     byRegime,
@@ -254,6 +265,15 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
     rDistribution: bucketR(inSample),
     rolling: rollingWindows(inSample),
     trades: inSample.sort((a, b) => (a.entryDate < b.entryDate ? -1 : 1)),
+    // The validation window is NOT sealed: it's the tier you iterate against,
+    // so its results come back every run. It degrades with repeated use rather
+    // than being spent in one look, which is the whole point of having it.
+    validation: valStart ? {
+      from: valStart,
+      to: splitDate,
+      summary: summarise(valTrades),
+      bySymbol: segment(valTrades, (t) => t.symbol),
+    } : null,
     // How much held-out evidence exists. The COUNT is always safe to show —
     // it reveals nothing about the outcomes.
     oosPending: oosTrades.length,

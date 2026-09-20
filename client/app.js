@@ -20,7 +20,8 @@ const state = {
   journalTrades: [],
   journalOpen: new Set(), // ids of expanded review forms
   planThesis: '',    // survives plan-builder re-renders
-  backtestSymbols: '', backtestYears: 3, backtestWait: 20,
+  backtestSymbols: '', backtestYears: 5, backtestWait: 20,
+  backtestValidation: 12, backtestHoldout: 12,
   backtestStyle: 'pullback', backtestResult: null,
   entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
@@ -1566,10 +1567,11 @@ function renderBacktestControls() {
       <textarea id="bt-symbols" rows="2" placeholder="AAPL, MSFT, COST">${esc(symbols)}</textarea>
     </div>
     <div class="calc-inputs">
-      ${field('bt-years', 'Years of history', state.backtestYears || 3, 'How far back to run. More years means more trades and more market conditions — including ones you would rather not have traded through.')}
+      ${field('bt-years', 'Years of history', state.backtestYears || 5, 'How far back to run. More years means more trades and more market conditions — including ones you would rather not have traded through.')}
       ${field('bt-account', 'Account size ($)', state.settings.accountSize || 60000, 'Only affects share counts and dollar P&L. Results in R are unaffected by it.')}
       ${field('bt-risk', 'Risk per trade (%)', state.settings.riskPct || 0.5, "Your system's sizing rule.")}
       ${field('bt-wait', 'Days to leave an order resting', state.backtestWait || 20, 'How long a buy order waits before the level it was based on is stale and gets re-derived. A rule the plan builder never made you state — the backtest forces the question.')}
+      ${field('bt-validation', 'Validation window (months)', state.backtestValidation ?? 12, 'A middle slice you can check changes against as often as you like. Set to 0 if you would rather keep all the older data for development.')}
       ${field('bt-holdout', 'Months held back (out-of-sample)', state.backtestHoldout ?? 12, 'The most recent N months are locked away and excluded from everything shown. You develop on the older data; the held-back slice is the only honest test of whether the rules work on prices you never studied. Set to 0 to disable — but then nothing here can tell you the system works.')}
     </div>
     <button class="primary-btn" id="bt-run" type="button">🧪 Run the system over history</button>
@@ -1595,6 +1597,7 @@ async function runBacktestUI(reveal = false) {
   state.backtestYears = val('bt-years');
   state.backtestWait = val('bt-wait');
   state.backtestHoldout = val('bt-holdout');
+  state.backtestValidation = val('bt-validation');
   const btn = $('#bt-run');
   btn.disabled = true;
   btn.textContent = 'Running…';
@@ -1611,6 +1614,7 @@ async function runBacktestUI(reveal = false) {
         riskPct: val('bt-risk'),
         maxWaitBars: val('bt-wait'),
         holdoutMonths: val('bt-holdout'),
+        validationMonths: val('bt-validation'),
         entryStyle: state.backtestStyle || 'pullback',
         reveal,
       }),
@@ -1656,6 +1660,7 @@ function renderBacktestResult(r) {
         `${o.losses} losses total · ${o.avgDaysHeld}d average hold`)}
     </div>
     ${verdictBox(r)}
+    ${validationPanel(r)}
     ${holdoutPanel(r)}
     ${variantWarning(r)}
     ${r.rolling && r.rolling.length > 1 ? `
@@ -1710,6 +1715,69 @@ function renderBacktestResult(r) {
   if (logAll) logAll.addEventListener('click', () => logAllBacktestTrades(r));
 }
 
+// The middle tier. Development data is where you iterate; this is where you
+// check whether an idea survives contact with data you didn't tune it on.
+// Unlike the sealed window it comes back every run — it wears out gradually
+// with reuse instead of being spent in a single look, which is exactly what
+// makes it the right place to try things.
+function validationPanel(r) {
+  if (!r.validation) {
+    if (!r.splitDate) return '';
+    return `
+      <div class="journal-insight" style="background:var(--surface-alt)">
+        <strong>Want somewhere to test changes?</strong> Set <em>Validation window</em> to 12
+        months. It carves a middle slice out of the development data that you can check ideas
+        against as often as you like — so the sealed window stays untouched until you are
+        actually finished.
+      </div>`;
+  }
+  const dev = r.overall, v = r.validation.summary;
+  if (!v.scored) {
+    return `<div class="journal-insight warn-box">
+      <strong>No trades in the validation window.</strong> ${esc(r.validation.from)} to
+      ${esc(r.validation.to)} produced nothing to measure — widen the window, add symbols, or
+      lengthen the history.</div>`;
+  }
+  const held = v.avgR > 0.05 && dev.avgR > 0 && v.avgR >= dev.avgR * 0.5;
+  const thin = v.scored < 20;
+  const gap = dev.avgR != null && v.avgR != null ? v.avgR - dev.avgR : null;
+
+  return `
+    <section class="card validation-card">
+      <div class="card-head"><h2>Validation window · ${esc(r.validation.from)} → ${esc(r.validation.to)}</h2>
+        <span class="not-advice" data-tip="Not sealed. These results come back on every run, so this is the tier to iterate against while you are still deciding.">Check ideas here</span>
+      </div>
+      <div class="window-strip">
+        <div class="window-seg dev"><span>Development</span><strong>${dev.scored}</strong>
+          <em>${rTxt(dev.avgR)}</em><small>iterate freely</small></div>
+        <div class="window-seg val"><span>Validation</span><strong>${v.scored}</strong>
+          <em>${rTxt(v.avgR)}</em><small>check changes here</small></div>
+        <div class="window-seg oos"><span>Held out</span><strong>${r.oosPending ?? 0}</strong>
+          <em>${r.revealed && r.oos ? rTxt(r.oos.summary.avgR) : '🔒'}</em><small>open once, at the end</small></div>
+      </div>
+      <div class="journal-insight ${held ? 'good-box' : 'warn-box'}" style="margin-bottom:0">
+        ${held
+          ? `<strong>✅ Carries over.</strong> ${rTxt(dev.avgR)} in development,
+             <strong>${rTxt(v.avgR)}</strong> here — the edge isn't confined to the data you
+             tuned on. Worth keeping.`
+          : v.avgR > 0.05
+            ? `<strong>🤔 Weaker here.</strong> ${rTxt(dev.avgR)} in development became
+               <strong>${rTxt(v.avgR)}</strong> — still positive, but ${gap != null
+                 ? `${Math.abs(gap).toFixed(2)}R of that development result` : 'some of it'}
+               didn't travel. Prefer the smaller number when you plan.`
+            : `<strong>❌ Doesn't carry.</strong> ${rTxt(dev.avgR)} in development became
+               <strong>${rTxt(v.avgR)}</strong> here. Whatever produced the development number
+               was specific to that stretch. Change something and run again — that's what this
+               window is for, and it costs you nothing.`}
+        ${thin ? `<br><br><strong>Caveat:</strong> only ${v.scored} trades in this window, so it
+          moves around a lot. Treat differences under about 0.3R as noise.` : ''}
+      </div>
+      <p class="hint">Iterating against this window is normal and expected — it's why it exists.
+      Just know it wears out slowly: the more variants you check here, the more the best of them
+      owes to luck, which is what the configuration count is tracking.</p>
+    </section>`;
+}
+
 // The held-out period, locked. Everything above this panel was computed from
 // development data only; this is the part that hasn't been looked at.
 function holdoutPanel(r) {
@@ -1734,10 +1802,14 @@ function holdoutPanel(r) {
         </div>
         <p><strong>${pending} trades</strong> from <strong>${esc(r.splitDate)}</strong> to today
         are waiting, and none of them contributed to anything above.</p>
-        <p class="hint">Finish your thinking on the development data first — decide the rules,
-        and write down what you expect this period to do. Then look, once. The moment you see
-        it, it stops being evidence and becomes more development data, because you can't
-        un-know it.</p>
+        <p class="hint">Finish your thinking first — decide the rules, and write down what you
+        expect this period to do. Then look, once. The moment you see it, it stops being
+        evidence and becomes more development data, because you can't un-know it.</p>
+        <p class="hint">${r.validation
+          ? 'Still deciding? Iterate against the <strong>validation window</strong> above as much as you like — that is what it is there for, and nothing you do there touches this.'
+          : 'Still deciding? Turn on a <strong>validation window</strong> in the setup above to get a slice you can test changes against without spending this one.'}
+        And this window refills: it is the last ${state.backtestHoldout ?? 12} months counted from
+        today, so a month from now it holds a month of data that does not exist yet.</p>
         ${thin ? `<div class="calc-warning">⚠️ Only ${pending} trades in the held-out window —
           a thin test. More symbols or a longer holdout would make the answer firmer.</div>` : ''}
         ${reveals > 0 ? `<div class="calc-warning">You have already unsealed a held-out period

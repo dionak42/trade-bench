@@ -77,17 +77,21 @@ actually run, and checking prices daily is how a plan turns into a reaction.
 I do not skip a phase because I feel ready. The journal decides.
 
 **Phase 1 — Backtest only. No money, real or paper.**
-Run **🧪 Test system** across the whole watchlist over 3–5 years, with
-**12 months held back**. Everything I see is development data. Before looking at
-the output I write down what I expect the win rate and average R to be, so the
-comparison is honest. Then I read the segments, not just the headline: by
-symbol, by year, by regime, and whether the edge was steady across rolling
-windows or arrived in one stretch.
+Run **🧪 Test system** across the whole watchlist over 5 years, split three ways:
 
-**I do not unseal the held-out period until I have finished deciding.** It is
-single-use: the moment I look, it stops being a test and becomes more
-development data, because I can't un-know it. When I do look, I write down my
-prediction first.
+| Window | What it's for | How often |
+|---|---|---|
+| **Development** (oldest) | Build and adjust the rules | As much as I like |
+| **Validation** (12 months) | Check whether a change carries over | Often — it wears out slowly |
+| **Held out** (last 12 months) | The final confidence check | Once, at the end |
+
+Adjusting the rules is the *expected* activity here, not a failure. I iterate on
+development, check candidates against validation, and only unseal the last
+window when I have actually finished deciding — writing down my prediction
+first. Before any of it I write down what I expect the win rate and average R to
+be, so the comparison is honest. Then I read the segments, not just the
+headline: by symbol, by year, by regime, and whether the edge was steady across
+rolling windows or arrived in one stretch.
 
 *Advance when:* the rules **survive the held-out period** — still positive, and
 not less than about half the development expectancy — and I can state from
@@ -158,10 +162,14 @@ loss until nothing is left. So:
    tested. Past about eight, I should expect the best-scoring one to look good
    by luck alone — so "it scored highest" stops being a reason for anything.
    Picking the winner off a leaderboard is how a backtest becomes a story.
-6. **A changed rule needs unseen data.** Once I've unsealed a held-out period, I
-   can't retest against it. Either the change waits for new history to
-   accumulate, or I accept that I'm now developing without a safety net and
-   size down accordingly.
+6. **Changing rules is fine; spending the held-out window is what's limited.**
+   I iterate on development and validation as much as I want. Only the final
+   window is single-use — and it isn't gone forever, because it's always the
+   last 12 months counted from today. Every month that passes puts a month of
+   genuinely unseen data into it. If I've just spent it and I want another
+   clean check, I either wait, or I let Phase 2 do it: **paper trading is
+   out-of-sample testing on prices that haven't happened yet**, and there's an
+   unlimited supply of it.
 5. **Log the change here with the date and the evidence.** The git history of
    this file is the record of how my thinking actually developed.
 
@@ -184,15 +192,18 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 | Hold period | No time limit | If winners resolve in ~20 days, dead trades tie up risk |
 | Order resting time | 20 trading days | Compare fill rate and expectancy at 10 / 20 / 40 in the backtest |
 | Holdout length | 12 months | Enough trades out of sample to judge? If under ~20, lengthen it |
+| Validation length | 12 months | Same test — under ~20 trades and differences here are noise |
 | Stocks only | No options | Revisit only after a full phase cycle, if ever |
 
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-20** — v1.4: three windows instead of two. Added a validation
+  window to iterate against, and corrected v1.3's overstatement — adjusting the
+  rules is the expected activity, and the held-out window refills as time
+  passes rather than being gone for good.
 - **2026-09-20** — v1.3: Phase 1 now requires surviving a 12-month held-out
-  period, not just scoring well in development. Added two rules for changing
-  rules: count the variants tried, and accept that a changed rule needs unseen
-  data before it can be tested again.
+  period, not just scoring well in development. Added the variant count.
 - **2026-09-20** — v1.2: added the order-resting rule (20 trading days), which
   the backtest forced me to make explicit. Phase 1 rewritten around the batch
   backtest rather than 30 manual replays — same lesson, better evidence.
