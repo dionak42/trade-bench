@@ -8,13 +8,13 @@ runs on a Mac mini, reached over Tailscale.
 | | |
 |---|---|
 | Host | a Mac mini, served tailnet-only over Tailscale (no auth, by design) |
-| **Repo path on that machine** | **`~/code-projects/trade-bench`** |
+| **Repo path on that machine** | **`~/code_projects/trade-bench`** |
 | Process manager | pm2 |
 
 Update and restart:
 
 ```
-cd ~/code-projects/trade-bench && git checkout main && git pull origin main && pm2 restart all && pm2 list
+cd ~/code_projects/trade-bench && git checkout main && git pull origin main && pm2 restart all && pm2 list
 ```
 
 `pm2 restart all` avoids a name mismatch — the process has been registered as
