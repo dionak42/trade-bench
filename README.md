@@ -11,6 +11,15 @@ and a watchlist momentum scan. Then, three views per ticker:
   with greeks, upcoming events (earnings + ex-dividends), IV rank, and news.
 - **📈 Paper** — place plans as real orders in an Alpaca **paper account** (stocks via
   bracket orders, plus covered calls / CSPs) and track positions, orders, and P&L.
+- **🧪 Test system** — run your rules across many symbols and years as a *sequence*
+  of trades, then see where they break down: equity curve in R, distribution of
+  results, rolling-window stability, and splits by symbol, year, and market regime.
+  History splits three ways: **development** to iterate on, a **validation** window to
+  check changes against, and a **sealed** window you unseal once as a real
+  out-of-sample test.
+- **📓 Journal** — one row per *decision*: the plan you committed to, what actually happened,
+  and whether you followed your own rules. Turns reps into a scoreboard (win rate, expectancy
+  in R, discipline rate, worst losing streak).
 
 Plus a shared watchlist, an interactive course, and a guided tour. Runs on a Mac mini and is
 reachable by two people over Tailscale — no login, no public internet exposure.
@@ -41,6 +50,20 @@ trade idea so it can be judged later — the habits the app's planning tools are
 - **IV rank (home-grown)** → snapshots at-the-money IV daily into SQLite; rank becomes
   meaningful after the server has run for a couple of weeks
 - **News panel** → recent headlines, newest first
+- **System backtest** → one trade after another across your whole watchlist, levels
+  re-derived on every trade from that day's bars only (no lookahead). Reports expectancy,
+  profit factor, worst drawdown and worst losing streak, and flags the two things a headline
+  number hides: whether the regime filter actually earns its keep, and whether one symbol is
+  carrying the entire result
+- **Out-of-sample discipline** → the sealed window's results are kept on the server and
+  never sent to the browser until you explicitly unseal them. Every look is logged, and every
+  distinct rule configuration you try is counted — because the more variants you test, the
+  more the best-scoring one owes to luck. The validation window in between is the one you
+  iterate against, so adjusting rules never has to spend the sealed one
+- **Trade journal** → log a plan (or a replay) in one click, record the outcome later, and grade
+  yourself on *process, not P&L*. P&L and R-multiple are derived from the plan you committed to,
+  never typed in. The headline number is the split between trades where you followed your rules
+  and trades where you didn't — the comparison that actually changes behaviour
 - **Market regime panel** (home) → the four major indexes (SPY/QQQ/IWM/DIA) with trend and RSI
   direction, all 11 sector ETFs ranked by consecutive down weeks, breadth (share of the universe
   above its 200-day, with the week-over-week direction once history accrues), 52-week highs vs
@@ -186,22 +209,29 @@ small future enhancement.)_
 trade-bench/
 ├── .env                 # API keys (gitignored)
 ├── package.json
+├── SYSTEM.md            # the written trading rules the app is run against
 ├── data/planner.db      # SQLite (auto-created, gitignored)
 ├── server/
 │   ├── index.js         # Express entrypoint, binds 0.0.0.0, daily snapshot jobs
-│   ├── routes.js        # /api/quote, /news, /events, /ivrank, /regime, /econ, /watchlist
+│   ├── routes.js        # /api/quote, /news, /events, /ivrank, /regime, /econ,
+│   │                    #   /watchlist, /journal, /backtest
 │   ├── alpaca.js        # price + options chain + dividends
 │   ├── finnhub.js       # news + earnings + economic calendar
 │   ├── indicators.js    # shared indicator math (SMA, RSI, ATR, realized vol, weekly streaks)
 │   ├── analysis.js      # per-ticker scorecard + watchlist scan
 │   ├── regime.js        # market-wide regime: indexes, sectors, breadth, volatility
 │   ├── econ.js          # macro calendar (feed + recurring rules + your own entries)
+│   ├── replay.js        # the system's rules (deriveLevels/sizePosition) + single replay
+│   ├── backtest.js      # the same rules as a sequence, across symbols and years
+│   ├── paper.js         # Alpaca paper-trading client
 │   ├── ivrank.js        # daily ATM-IV snapshot + rank
-│   └── db.js            # SQLite (watchlist, iv_snapshots, regime_snapshots, econ_events)
+│   └── db.js            # SQLite (watchlist, iv_snapshots, settings, trades,
+│                        #   tested_variants, oos_reveals, regime_snapshots, econ_events)
 └── client/
     ├── index.html
     ├── styles.css
-    ├── app.js           # search, chain, calculators, auto-refresh, target zone
+    ├── app.js           # search, chain, calculators, plan builder, journal, backtest
+    ├── charts.js        # inline-SVG charts (price, payoff, equity curve, histogram)
     ├── help.js          # help modal content + guided tour
     └── tooltip.js       # instant hover tooltips
 ```

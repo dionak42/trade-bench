@@ -5,11 +5,81 @@
 // A backtest for learning — past results, not a prediction. Stocks only.
 import { getDailyBars } from './alpaca.js';
 
-function daysBetween(a, b) {
+export function daysBetween(a, b) {
   return Math.round((new Date(b) - new Date(a)) / 86400000);
 }
 
-export async function runReplay(symbol, opts = {}) {
+// THE SYSTEM'S RULES, in one place. Both the single-trade replay and the
+// multi-trade backtest call this, so a backtest can never quietly test
+// different rules from the ones the plan builder places.
+//
+// Everything is computed from bars STRICTLY BEFORE `idx` — no lookahead. That
+// constraint is the whole reason a backtest is worth anything: the moment a
+// level is derived from a bar the trader couldn't have seen, the results stop
+// describing a strategy and start describing hindsight.
+export const MIN_HISTORY = 25; // bars needed before a level can be derived
+
+export function deriveLevels(bars, idx, { stopAtrMult = 2, entryStyle = 'pullback' } = {}) {
+  if (idx < MIN_HISTORY) return null;
+  const lookback = bars.slice(idx - 20, idx);
+  const support = Math.min(...lookback.map((b) => b.l));     // 20-day support
+  const resistance = Math.max(...lookback.map((b) => b.h));  // 20-day resistance
+
+  const atrBars = bars.slice(idx - 15, idx);                 // 14 true ranges
+  let trSum = 0, trN = 0;
+  for (let i = 1; i < atrBars.length; i++) {
+    const h = atrBars[i].h, l = atrBars[i].l, pc = atrBars[i - 1].c;
+    trSum += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
+    trN++;
+  }
+  const atr = trN ? trSum / trN : (resistance - support) * 0.1;
+
+  // Pullback: buy the 20-day support. Breakout: buy above the 20-day
+  // resistance, with a measured-move target (the prior range projected up).
+  const breakout = entryStyle === 'breakout';
+  const entry = breakout ? resistance : support;
+  const target = breakout ? resistance + (resistance - support) : resistance;
+  const stop = Number((entry - stopAtrMult * atr).toFixed(2));
+
+  // The regime filter from SYSTEM.md rule 2, as of this bar. Recorded on every
+  // trade so the backtest can answer whether the filter actually earns its keep.
+  const closes = bars.slice(0, idx).map((b) => b.c);
+  const smaAt = (p) => {
+    if (closes.length < p) return null;
+    const slice = closes.slice(-p);
+    return slice.reduce((a, b) => a + b, 0) / p;
+  };
+  const sma50 = smaAt(50), sma200 = smaAt(200);
+  const regime = sma50 != null && sma200 != null ? (sma50 >= sma200 ? 'golden' : 'death') : null;
+
+  return {
+    entry: Number(entry.toFixed(2)),
+    target: Number(target.toFixed(2)),
+    stop,
+    atr,
+    support,
+    resistance,
+    regime,
+    breakout,
+    riskPerShare: entry - stop,
+    asOf: bars[idx].t.slice(0, 10),
+  };
+}
+
+// Position size — the same rules as the plan builder.
+export function sizePosition({ entry, riskPerShare, mode, accountSize, riskPct, capital }) {
+  if (mode === 'risk') {
+    const riskBudget = accountSize * riskPct / 100;
+    let shares = riskPerShare > 0 ? Math.floor(riskBudget / riskPerShare) : 0;
+    const maxByCash = entry > 0 ? Math.floor(accountSize / entry) : 0;
+    if (shares > maxByCash) shares = maxByCash;
+    return shares;
+  }
+  return entry > 0 ? Math.floor(capital / entry) || 0 : 0;
+}
+
+// `fetchBars` is injectable for tests, as in backtest.js.
+export async function runReplay(symbol, opts = {}, fetchBars = getDailyBars) {
   const {
     startDate,
     mode = 'risk',
@@ -21,46 +91,17 @@ export async function runReplay(symbol, opts = {}) {
   } = opts;
   if (!startDate) throw new Error('A start date is required.');
 
-  const bars = await getDailyBars(symbol, 900); // ~3+ years of daily bars
+  const bars = await fetchBars(symbol, 900); // ~3+ years of daily bars
   const startIdx = bars.findIndex((b) => b.t.slice(0, 10) >= startDate);
   if (startIdx < 0) throw new Error('Start date is after the available history.');
-  if (startIdx < 25) throw new Error('Not enough history before that date to set the system levels.');
+  if (startIdx < MIN_HISTORY) throw new Error('Not enough history before that date to set the system levels.');
 
-  // --- Levels from the system's rules, as of the start date (no lookahead) ---
-  const lookback = bars.slice(startIdx - 20, startIdx);
-  const support = Math.min(...lookback.map((b) => b.l));     // 20-day support
-  const resistance = Math.max(...lookback.map((b) => b.h));  // 20-day resistance
-  const atrBars = bars.slice(startIdx - 15, startIdx);       // 14 true ranges
-  let trSum = 0, trN = 0;
-  for (let i = 1; i < atrBars.length; i++) {
-    const h = atrBars[i].h, l = atrBars[i].l, pc = atrBars[i - 1].c;
-    trSum += Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc));
-    trN++;
-  }
-  const atr = trN ? trSum / trN : (resistance - support) * 0.1;
-  const breakout = entryStyle === 'breakout';
-  // Pullback: buy the 20-day support. Breakout: buy above the 20-day resistance,
-  // with a measured-move target (the prior range projected up).
-  const entry = breakout ? resistance : support;
-  const target = breakout ? resistance + (resistance - support) : resistance;
-  const stop = Number((entry - stopAtrMult * atr).toFixed(2));
-  const riskPerShare = entry - stop;
-
-  // --- Position size (same rules as the plan builder) ---
-  let shares;
-  if (mode === 'risk') {
-    const riskBudget = accountSize * riskPct / 100;
-    shares = riskPerShare > 0 ? Math.floor(riskBudget / riskPerShare) : 0;
-    const maxByCash = entry > 0 ? Math.floor(accountSize / entry) : 0;
-    if (shares > maxByCash) shares = maxByCash;
-  } else {
-    shares = entry > 0 ? Math.floor(capital / entry) || 0 : 0;
-  }
+  const lv = deriveLevels(bars, startIdx, { stopAtrMult, entryStyle });
+  const { entry, target, stop, riskPerShare, breakout } = lv;
+  const shares = sizePosition({ entry, riskPerShare, mode, accountSize, riskPct, capital });
 
   const levels = {
-    entry: Number(entry.toFixed(2)),
-    target: Number(target.toFixed(2)),
-    stop,
+    entry, target, stop,
     asOf: startDate,
     shares,
     style: entryStyle,

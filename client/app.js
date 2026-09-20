@@ -15,6 +15,14 @@ const state = {
   view: 'analysis',  // 'analysis' (Research) | 'planner' (Options) | 'paper'
   analysis: null,    // cached scorecard for the loaded symbol
   sizingMode: 'risk', // 'risk' | 'capital'
+  journalStatus: '',  // journal filters
+  journalSymbol: '',
+  journalTrades: [],
+  journalOpen: new Set(), // ids of expanded review forms
+  planThesis: '',    // survives plan-builder re-renders
+  backtestSymbols: '', backtestYears: 5, backtestWait: 20,
+  backtestValidation: 12, backtestHoldout: 12,
+  backtestStyle: 'pullback', backtestResult: null,
   entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
   regime: null,      // market-wide context (indexes, sectors, breadth, vol)
@@ -866,6 +874,10 @@ function renderPlanBuilder(a) {
       ${field('plan-stop', 'Trailing stop %', stopPct, 'How far below the peak the runner can fall before it sells. Defaults to ~2× the average daily move.')}
       ${sizingInputs}
     </div>
+    <div class="field plan-thesis-field">
+      <label><span class="q" data-tip="Why this trade, in your own words — the setup you think you're taking. Writing it before the outcome is known is what makes the later review honest: you can't quietly rewrite the reason once you know how it ended.">Why this trade? (goes in the journal)</span></label>
+      <textarea id="plan-thesis" rows="2" placeholder="e.g. pullback to 20-day support, still in a golden-cross regime, RSI turning up"></textarea>
+    </div>
     <div id="plan-out"></div>`;
 
   $('#entry-style-toggle').querySelectorAll('button').forEach((b) =>
@@ -874,6 +886,9 @@ function renderPlanBuilder(a) {
     b.addEventListener('click', () => { state.sizingMode = b.dataset.mode; renderPlanBuilder(a); }));
   $('#plan-builder').querySelectorAll('input').forEach((inp) =>
     inp.addEventListener('input', computePlan));
+  const thesisEl = $('#plan-thesis');
+  thesisEl.value = state.planThesis || '';
+  thesisEl.addEventListener('input', () => { state.planThesis = thesisEl.value; });
   computePlan();
   drawPriceChart();
 }
@@ -949,8 +964,14 @@ function computePlan() {
       ${breakout ? '' : `<br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the Options tab and sell a cash-secured put around that strike.</span>`}
     </div>
     ${shares >= 1 && rr != null && state.symbol ? `
-      <button class="primary-btn place-btn" id="plan-place">📈 Place as paper bracket order</button>
-      <div class="place-note">${breakout ? 'Buy-stop' : 'Buy-limit'} ${shares} ${state.symbol}, take-profit ${money(target)}, stop ${money(stopPrice)}. Simulated — no real money.</div>` : ''}`;
+      <div class="plan-buttons">
+        <button class="primary-btn place-btn" id="plan-place">📈 Place as paper bracket order</button>
+        <button class="ghost-btn" id="plan-log" type="button" data-tip="Records the plan without placing anything — for a setup you've decided to pass on, or one you want to watch. Logging the trades you skip is half the lesson.">📓 Log to journal only</button>
+      </div>
+      <div class="place-note">${breakout ? 'Buy-stop' : 'Buy-limit'} ${shares} ${state.symbol}, take-profit ${money(target)}, stop ${money(stopPrice)}. Simulated — no real money. Placing it also writes the plan to your journal.</div>` : ''}`;
+  const plan = { entry: round2(entry), target: round2(target), stopPrice: round2(stopPrice),
+                 shares, riskPS: round2(riskPS), dollarRisk: round2(dollarRisk),
+                 rr: rr != null ? round2(rr) : null };
   const btn = document.getElementById('plan-place');
   if (btn) {
     const entryOrder = breakout
@@ -961,8 +982,11 @@ function computePlan() {
       time_in_force: 'gtc', order_class: 'bracket',
       take_profit: { limit_price: round2(target) },
       stop_loss: { stop_price: round2(stopPrice) },
-    }, `Place a paper BRACKET order (${breakout ? 'buy-stop breakout' : 'buy-limit pullback'}):\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\nMax loss: ${money(dollarRisk)}\n\nProceed? (simulated, no real money)`));
+    }, `Place a paper BRACKET order (${breakout ? 'buy-stop breakout' : 'buy-limit pullback'}):\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\nMax loss: ${money(dollarRisk)}\n\nProceed? (simulated, no real money)`,
+      planPayload(plan)));
   }
+  const logBtn = document.getElementById('plan-log');
+  if (logBtn) logBtn.addEventListener('click', () => logTrade(planPayload(plan)));
   drawPriceChart();
 }
 
@@ -1009,8 +1033,12 @@ async function runReplayUI() {
 function renderReplayResult(r) {
   const out = $('#replay-result');
   const levelsLine = `<div class="replay-levels">${r.style === 'breakout' ? 'Breakout' : 'Pullback'} plan <strong>as of ${r.asOf}</strong>: buy <strong>${money(r.entry)}</strong> · target <strong>${money(r.target)}</strong> · stop <strong>${money(r.stop)}</strong> · ${r.shares} shares</div>`;
+  const logBtn = `<button class="ghost-btn" id="replay-log" type="button" data-tip="Files this replay in your journal as one rep. Thirty of these gives you your system's real win rate, average R, and worst losing streak — the numbers that tell you whether to trust it when money is on the line.">📓 Log this rep to the journal</button>`;
   if (r.outcome === 'no_fill') {
-    out.innerHTML = `${levelsLine}<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>`;
+    out.innerHTML = `${levelsLine}<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>
+      <div class="plan-buttons">${logBtn}</div>
+      <p class="hint">Worth logging: a setup that never triggered is a real outcome, and a system that rarely fills is telling you something.</p>`;
+    wireReplayLog(r);
     return;
   }
   const map = {
@@ -1034,8 +1062,45 @@ function renderReplayResult(r) {
       ${outCell('', '')}
     </div>
     <div id="replay-chart" class="chart-box"></div>
+    <div class="plan-buttons">${logBtn}</div>
     <p class="hint">Entry, target, and stop are set from the 20-day support/resistance and ATR stop <strong>as of ${r.asOf}</strong> — using only data up to that day, so there's no lookahead.</p>`;
   if (window.charts) window.charts.replayChart(document.getElementById('replay-chart'), r);
+  wireReplayLog(r);
+}
+
+// A replay is the system run mechanically, so it's logged as having followed
+// the rules by definition. That makes the replay set your baseline: what the
+// system does when nobody second-guesses it. Every live trade you grade later
+// gets measured against it.
+function wireReplayLog(r) {
+  const btn = document.getElementById('replay-log');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const riskPS = r.entry != null && r.stop != null ? round2(r.entry - r.stop) : null;
+    const status = r.outcome === 'open' ? 'open' : 'closed';
+    const saved = await logTrade({
+      symbol: r.symbol,
+      kind: 'stock',
+      source: 'replay',
+      status,
+      entry_style: r.style || state.entryStyle,
+      entry: r.entry, target: r.target, stop: r.stop, shares: r.shares,
+      risk_per_share: riskPS,
+      planned_risk: riskPS != null && r.shares ? round2(riskPS * r.shares) : null,
+      reward_risk: riskPS ? round2((r.target - r.entry) / riskPS) : null,
+      thesis: `Replay of the ${r.style === 'breakout' ? 'breakout' : 'pullback'} rule with levels as of ${r.asOf}.`,
+      entry_price: r.entryPrice ?? null,
+      exit_price: r.outcome === 'open' ? null : (r.exitPrice ?? null),
+      entry_date: r.entryDate ?? null,
+      exit_date: r.outcome === 'open' ? null : (r.exitDate ?? null),
+      outcome: r.outcome === 'open' ? null : r.outcome,
+      followed_rules: true, // mechanical by construction
+    }, { announce: false });
+    if (saved) {
+      btn.textContent = '✓ Logged';
+      btn.disabled = true;
+    }
+  });
 }
 
 function switchView(v) {
@@ -1045,8 +1110,12 @@ function switchView(v) {
   $('#planner-view').classList.toggle('hidden', v !== 'planner');
   $('#analysis-view').classList.toggle('hidden', v !== 'analysis');
   $('#paper-view').classList.toggle('hidden', v !== 'paper');
+  $('#journal-view').classList.toggle('hidden', v !== 'journal');
+  $('#backtest-view').classList.toggle('hidden', v !== 'backtest');
   if (v === 'analysis' && state.symbol) loadAnalysis();
   if (v === 'paper') loadPaper();
+  if (v === 'journal') loadJournal();
+  if (v === 'backtest') renderBacktestControls();
 }
 
 $('#view-toggle').querySelectorAll('button').forEach((b) =>
@@ -1065,6 +1134,8 @@ function openPaper() {
   $('#view-toggle').classList.toggle('hidden', !hasSymbol);
   $('#planner-view').classList.add('hidden');
   $('#analysis-view').classList.add('hidden');
+  $('#journal-view').classList.add('hidden');
+  $('#backtest-view').classList.add('hidden');
   $('#paper-view').classList.remove('hidden');
   state.view = 'paper';
   if (hasSymbol) {
@@ -1156,16 +1227,23 @@ function renderPaperOrders(orders) {
     btn.addEventListener('click', () => cancelPaperOrder(btn.dataset.cancel)));
 }
 
-async function placePaperOrder(order, confirmMsg) {
+async function placePaperOrder(order, confirmMsg, journalPayload) {
   if (!window.confirm(confirmMsg)) return;
   try {
-    await api('/paper/order', {
+    const { order: placed } = await api('/paper/order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(order),
     });
+    // Every order you place gets journaled — no opt-out. The trades that
+    // never make it into the record are exactly the ones worth reviewing.
+    if (journalPayload) {
+      await logTrade({ ...journalPayload, order_id: placed?.id || '' }, { announce: false });
+    }
     switchView('paper'); // jump to the paper view and refresh
-    window.alert('Paper order placed.');
+    window.alert(journalPayload
+      ? 'Paper order placed — and logged to your journal.'
+      : 'Paper order placed.');
   } catch (err) {
     window.alert('Order rejected: ' + err.message);
   }
@@ -1183,6 +1261,879 @@ async function closePaperPosition(symbol) {
 }
 
 $('#paper-refresh').addEventListener('click', loadPaper);
+
+// ---------- Trade journal ----------
+// The feedback loop. A plan you don't write down can't teach you anything:
+// you remember the winners, forget the rule-breaks, and after a year you have
+// a hundred trades and no lesson. One row per decision fixes that.
+
+function openJournal() {
+  const hasSymbol = Boolean(state.symbol);
+  $('#empty-state').classList.add('hidden');
+  $('#scan-panel').classList.add('hidden');
+  $('#regime-panel').classList.add('hidden');
+  $('#macro-panel').classList.add('hidden');
+  $('#content').classList.remove('hidden');
+  $('#ticker-header').classList.toggle('hidden', !hasSymbol);
+  $('#view-toggle').classList.toggle('hidden', !hasSymbol);
+  $('#planner-view').classList.add('hidden');
+  $('#analysis-view').classList.add('hidden');
+  $('#paper-view').classList.add('hidden');
+  $('#backtest-view').classList.add('hidden');
+  $('#journal-view').classList.remove('hidden');
+  state.view = 'journal';
+  if (hasSymbol) {
+    $('#view-toggle').querySelectorAll('button').forEach((b) =>
+      b.classList.toggle('active', b.dataset.view === 'journal'));
+  }
+  loadJournal();
+}
+
+async function loadJournal() {
+  const list = $('#journal-list');
+  list.innerHTML = '<div class="loading">Loading your journal…</div>';
+  const qs = new URLSearchParams();
+  if (state.journalStatus) qs.set('status', state.journalStatus);
+  if (state.journalSymbol) qs.set('symbol', state.journalSymbol);
+  try {
+    const [{ trades }, stats] = await Promise.all([
+      api(`/journal${qs.toString() ? '?' + qs : ''}`),
+      api('/journal/stats'),
+    ]);
+    state.journalTrades = trades;
+    renderJournalStats(stats);
+    renderJournalInsight(stats);
+    renderJournalSymbols(trades);
+    renderJournalList(trades);
+  } catch (err) {
+    list.innerHTML = `<div class="error-banner">Couldn’t load the journal: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderJournalStats(s) {
+  const r = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + 'R');
+  const expectancyCls = s.avgR == null ? '' : s.avgR > 0 ? 'good' : 'bad';
+  const discCls = s.disciplineRate == null ? '' : s.disciplineRate >= 0.8 ? 'good' : 'warn';
+  $('#journal-stats').innerHTML = `
+    ${scoreCard('Trades logged', s.total,
+      `${s.planned} planned · ${s.open} open · ${s.closed} closed`)}
+    ${scoreCard('Win rate', s.winRate != null ? pct(s.winRate, 0) : '—',
+      s.scored ? `${s.wins}W / ${s.losses}L across ${s.scored} scored` : 'No closed trades yet')}
+    ${scoreCard('Expectancy', r(s.avgR),
+      s.scored ? `Average result per trade · ${r(s.totalR)} total` : 'The number that decides if the system pays', expectancyCls)}
+    ${scoreCard('Discipline', s.disciplineRate != null ? pct(s.disciplineRate, 0) : '—',
+      s.reviewed ? `Followed your rules on ${s.followedCount} of ${s.reviewed} reviewed` : 'Grade a closed trade to start', discCls)}
+    ${scoreCard('Avg win / loss', `${r(s.avgWinR)} / ${r(s.avgLossR)}`,
+      'A system can win 40% of the time and still pay, if the wins are bigger')}
+    ${scoreCard('Worst losing streak', s.worstLossStreak || '—',
+      'What a normal bad patch looks like — before you live through one')}`;
+}
+
+// The comparison the journal exists to produce: your results when you ran the
+// system versus when you overrode it. Most people never measure this, which is
+// exactly why they keep overriding it.
+function renderJournalInsight(s) {
+  const el = $('#journal-insight');
+  if (!el) return;
+  if (s.followedCount < 3 || s.brokeCount < 3 || s.avgRFollowed == null || s.avgRBroke == null) {
+    el.innerHTML = '';
+    return;
+  }
+  const diff = s.avgRFollowed - s.avgRBroke;
+  const better = diff > 0;
+  el.innerHTML = `
+    <div class="journal-insight ${better ? 'good-box' : 'warn-box'}">
+      <strong>${better ? '📐 Your rules are beating your instincts.' : '🤔 Your overrides are outperforming your rules.'}</strong>
+      Trades where you followed the system averaged
+      <strong>${s.avgRFollowed >= 0 ? '+' : ''}${s.avgRFollowed.toFixed(2)}R</strong> (${s.followedCount} trades);
+      trades where you broke it averaged
+      <strong>${s.avgRBroke >= 0 ? '+' : ''}${s.avgRBroke.toFixed(2)}R</strong> (${s.brokeCount}).
+      ${better
+        ? 'The discipline is worth real money — protect it.'
+        : 'Worth a look: either the overrides are a skill worth writing into the rules, or the sample is still too small to trust. Keep logging before you change anything.'}
+    </div>`;
+}
+
+function renderJournalSymbols(trades) {
+  const sel = $('#journal-symbol-filter');
+  const symbols = [...new Set((state.journalAllSymbols || []).concat(trades.map((t) => t.symbol)))].sort();
+  state.journalAllSymbols = symbols;
+  sel.innerHTML = '<option value="">All symbols</option>' +
+    symbols.map((s) => `<option value="${esc(s)}" ${s === state.journalSymbol ? 'selected' : ''}>${esc(s)}</option>`).join('');
+}
+
+const OUTCOME_META = {
+  target: { icon: '🎯', label: 'Target hit', cls: 'good' },
+  stopped: { icon: '🛑', label: 'Stopped out', cls: 'bad' },
+  manual: { icon: '✋', label: 'Closed by hand', cls: '' },
+  no_fill: { icon: '⚪', label: 'Never filled', cls: 'muted' },
+};
+
+function renderJournalList(trades) {
+  const list = $('#journal-list');
+  if (!trades.length) {
+    list.innerHTML = `<div class="event-none">Nothing logged yet. Build a plan in
+      <strong>🔍 Research</strong> and hit <strong>📓 Log to journal</strong>, or run a
+      <strong>Historical Replay</strong> and log the result — replays are the fastest way to
+      put thirty reps on the board.</div>`;
+    return;
+  }
+  list.innerHTML = trades.map(journalCard).join('');
+  list.querySelectorAll('[data-toggle]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const id = Number(b.dataset.toggle);
+      if (state.journalOpen.has(id)) state.journalOpen.delete(id);
+      else state.journalOpen.add(id);
+      renderJournalList(state.journalTrades);
+    }));
+  list.querySelectorAll('[data-save]').forEach((b) =>
+    b.addEventListener('click', () => saveJournalReview(Number(b.dataset.save))));
+  list.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', () => deleteJournalTrade(Number(b.dataset.del))));
+  list.querySelectorAll('[data-rules]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const wrap = b.closest('.rules-toggle');
+      wrap.querySelectorAll('button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      wrap.dataset.value = b.dataset.rules;
+    }));
+}
+
+function journalCard(t) {
+  const open = state.journalOpen.has(t.id);
+  const om = OUTCOME_META[t.outcome] || {};
+  const rCls = t.r_multiple == null ? '' : t.r_multiple > 0 ? 'good' : 'bad';
+  const statusCls = t.status === 'closed' ? 'muted' : t.status === 'open' ? 'good' : '';
+
+  const planLine = t.entry != null
+    ? `buy <strong>${money(t.entry)}</strong>${t.target != null ? ` → target <strong>${money(t.target)}</strong>` : ''}${t.stop != null ? ` · stop <strong>${money(t.stop)}</strong>` : ''}${t.shares ? ` · ${t.shares} sh` : ''}${t.reward_risk != null ? ` · ${t.reward_risk.toFixed(1)}:1` : ''}`
+    : '<span class="muted">No levels recorded</span>';
+
+  const outcomeLine = t.status === 'closed'
+    ? `<div class="journal-outcome">
+         <span class="${om.cls || ''}">${om.icon || ''} ${om.label || t.outcome || 'Closed'}</span>
+         ${t.pnl != null ? `<span class="${t.pnl >= 0 ? 'good' : 'bad'}">${t.pnl >= 0 ? '+' : ''}${money(t.pnl)}</span>` : ''}
+         ${t.r_multiple != null ? `<span class="${rCls}"><strong>${t.r_multiple >= 0 ? '+' : ''}${t.r_multiple.toFixed(2)}R</strong></span>` : ''}
+         ${t.followed_rules === 1 ? '<span class="badge good-box">✅ followed the rules</span>'
+           : t.followed_rules === 0 ? '<span class="badge warn-box">⚠️ broke the rules</span>'
+           : '<span class="badge">not graded yet</span>'}
+       </div>`
+    : '';
+
+  return `
+    <div class="journal-card${t.followed_rules === 0 ? ' broke' : ''}">
+      <div class="journal-head">
+        <div>
+          <strong class="journal-sym">${esc(t.symbol)}</strong>
+          <span class="badge">${esc(t.status)}</span>
+          ${t.entry_style ? `<span class="badge">${esc(t.entry_style)}</span>` : ''}
+          ${t.source !== 'paper' ? `<span class="badge">${esc(t.source)}</span>` : ''}
+        </div>
+        <span class="journal-date ${statusCls}" data-tip="${t.entry_date ? 'Date the trade was entered' : 'Date the plan was logged'}">${esc((t.entry_date || t.planned_at || '').slice(0, 10))}</span>
+      </div>
+      <div class="journal-plan">${planLine}</div>
+      ${t.thesis ? `<div class="journal-thesis">“${esc(t.thesis)}”</div>` : ''}
+      ${outcomeLine}
+      ${t.lesson ? `<div class="journal-lesson">📝 ${esc(t.lesson)}</div>` : ''}
+      <div class="journal-actions">
+        <button class="ghost-btn sm" data-toggle="${t.id}">${open ? 'Close' : t.status === 'closed' ? 'Edit review' : 'Review / record outcome'}</button>
+        <button class="ghost-btn sm" data-del="${t.id}">Delete</button>
+      </div>
+      ${open ? journalReviewForm(t) : ''}
+    </div>`;
+}
+
+function journalReviewForm(t) {
+  const v = (x) => (x == null ? '' : x);
+  const opt = (val, label, cur) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
+  return `
+    <div class="journal-review" data-form="${t.id}">
+      <div class="calc-inputs">
+        <div class="field"><label>Status</label>
+          <select id="jr-status-${t.id}">
+            ${opt('planned', 'Planned — not filled yet', t.status)}
+            ${opt('open', 'Open — filled, still running', t.status)}
+            ${opt('closed', 'Closed — done', t.status)}
+          </select></div>
+        <div class="field"><label>Outcome</label>
+          <select id="jr-outcome-${t.id}">
+            ${opt('', '—', t.outcome || '')}
+            ${opt('target', '🎯 Target hit', t.outcome)}
+            ${opt('stopped', '🛑 Stopped out', t.outcome)}
+            ${opt('manual', '✋ Closed by hand', t.outcome)}
+            ${opt('no_fill', '⚪ Never filled', t.outcome)}
+          </select></div>
+        <div class="field"><label>Fill price</label>
+          <input id="jr-entry-${t.id}" type="number" step="0.01" value="${v(t.entry_price)}" /></div>
+        <div class="field"><label>Exit price</label>
+          <input id="jr-exit-${t.id}" type="number" step="0.01" value="${v(t.exit_price)}" /></div>
+        <div class="field"><label>Fill date</label>
+          <input id="jr-edate-${t.id}" type="date" value="${v(t.entry_date)}" /></div>
+        <div class="field"><label>Exit date</label>
+          <input id="jr-xdate-${t.id}" type="date" value="${v(t.exit_date)}" /></div>
+      </div>
+      <div class="field">
+        <label><span class="q" data-tip="The only grade that matters while you're learning. Did you take the entry you planned, at the size you planned, and let the exits do their job? A loss that followed the plan is a PASS. A win you chased is a FAIL.">Did you follow your rules?</span></label>
+        <div class="toggle rules-toggle" data-value="${t.followed_rules == null ? '' : t.followed_rules}">
+          <button type="button" class="${t.followed_rules === 1 ? 'active' : ''}" data-rules="1">✅ Yes</button>
+          <button type="button" class="${t.followed_rules === 0 ? 'active' : ''}" data-rules="0">⚠️ No</button>
+        </div>
+      </div>
+      <div class="field">
+        <label><span class="q" data-tip="One sentence. What would you tell yourself before the next trade like this one?">Lesson</span></label>
+        <textarea id="jr-lesson-${t.id}" rows="2" placeholder="One sentence — what would you tell yourself before the next one?">${esc(v(t.lesson))}</textarea>
+      </div>
+      <button class="primary-btn" data-save="${t.id}">Save review</button>
+      <p class="hint">P&amp;L and R are worked out from the plan you committed to — fill price, exit price, and the stop you set.</p>
+    </div>`;
+}
+
+async function saveJournalReview(id) {
+  const g = (p) => document.getElementById(`jr-${p}-${id}`);
+  const rules = document.querySelector(`[data-form="${id}"] .rules-toggle`)?.dataset.value;
+  const body = {
+    status: g('status').value,
+    outcome: g('outcome').value,
+    entry_price: g('entry').value,
+    exit_price: g('exit').value,
+    entry_date: g('edate').value,
+    exit_date: g('xdate').value,
+    lesson: g('lesson').value,
+  };
+  if (rules === '0' || rules === '1') body.followed_rules = rules === '1';
+  try {
+    await api(`/journal/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    state.journalOpen.delete(id);
+    loadJournal();
+  } catch (err) {
+    window.alert('Couldn’t save the review: ' + err.message);
+  }
+}
+
+async function deleteJournalTrade(id) {
+  if (!window.confirm('Delete this journal entry? The record is the whole point — only delete mistakes.')) return;
+  try { await api(`/journal/${id}`, { method: 'DELETE' }); state.journalOpen.delete(id); loadJournal(); }
+  catch (err) { window.alert('Delete failed: ' + err.message); }
+}
+
+// Write a plan into the journal. Called both when a plan is placed as a paper
+// order and when it's logged on its own.
+async function logTrade(payload, { announce = true } = {}) {
+  try {
+    const { trade } = await api('/journal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (announce) window.alert(`Logged ${trade.symbol} to your journal. Record the outcome there when it's done.`);
+    return trade;
+  } catch (err) {
+    window.alert('Couldn’t log to the journal: ' + err.message);
+    return null;
+  }
+}
+
+// The plan currently in the builder, shaped for the journal.
+function planPayload({ entry, target, stopPrice, shares, riskPS, dollarRisk, rr }) {
+  const a = state.analysis;
+  return {
+    symbol: state.symbol,
+    kind: 'stock',
+    source: 'paper',
+    status: 'planned',
+    entry_style: state.entryStyle,
+    entry, target, stop: stopPrice, shares,
+    risk_per_share: riskPS,
+    planned_risk: dollarRisk,
+    reward_risk: rr,
+    thesis: (document.getElementById('plan-thesis')?.value || '').trim(),
+    ctx_price: a?.price ?? null,
+    ctx_trend: a?.trend?.label ?? '',
+    ctx_regime: a?.trend?.regime ?? '',
+    ctx_rsi: a?.momentum?.rsi14 ?? null,
+  };
+}
+
+$('#journal-btn').addEventListener('click', openJournal);
+$('#journal-refresh').addEventListener('click', loadJournal);
+$('#journal-status-filter').addEventListener('change', (e) => {
+  state.journalStatus = e.target.value;
+  loadJournal();
+});
+$('#journal-symbol-filter').addEventListener('change', (e) => {
+  state.journalSymbol = e.target.value;
+  loadJournal();
+});
+
+// ---------- System backtest ----------
+// One replay is an anecdote. This runs the system across every symbol you pick,
+// one trade after another, over years — and then splits the results up, because
+// the headline number hides the places where a system actually breaks down.
+
+function openBacktest() {
+  const hasSymbol = Boolean(state.symbol);
+  $('#empty-state').classList.add('hidden');
+  $('#scan-panel').classList.add('hidden');
+  $('#regime-panel').classList.add('hidden');
+  $('#macro-panel').classList.add('hidden');
+  $('#content').classList.remove('hidden');
+  $('#ticker-header').classList.toggle('hidden', !hasSymbol);
+  $('#view-toggle').classList.toggle('hidden', !hasSymbol);
+  $('#planner-view').classList.add('hidden');
+  $('#analysis-view').classList.add('hidden');
+  $('#paper-view').classList.add('hidden');
+  $('#journal-view').classList.add('hidden');
+  $('#backtest-view').classList.remove('hidden');
+  state.view = 'backtest';
+  if (hasSymbol) {
+    $('#view-toggle').querySelectorAll('button').forEach((b) =>
+      b.classList.toggle('active', b.dataset.view === 'backtest'));
+  }
+  renderBacktestControls();
+}
+
+function renderBacktestControls() {
+  const el = $('#backtest-controls');
+  if (el.dataset.ready) return; // keep whatever the user typed
+  const watch = (state._watchlist || []).map((w) => w.symbol);
+  const symbols = state.backtestSymbols
+    || (watch.length ? watch.join(', ') : (state.symbol || ''));
+  el.dataset.ready = '1';
+  el.innerHTML = `
+    <div class="toggle plan-mode" id="bt-style-toggle" role="tablist">
+      <button class="active" data-style="pullback" type="button">Pullback · buy support</button>
+      <button data-style="breakout" type="button">Breakout · buy resistance</button>
+    </div>
+    <div class="field">
+      <label><span class="q" data-tip="Comma-separated tickers. Defaults to your watchlist — the universe your system actually trades. Up to 25.">Symbols</span></label>
+      <textarea id="bt-symbols" rows="2" placeholder="AAPL, MSFT, COST">${esc(symbols)}</textarea>
+    </div>
+    <div class="calc-inputs">
+      ${field('bt-years', 'Years of history', state.backtestYears || 5, 'How far back to run. More years means more trades and more market conditions — including ones you would rather not have traded through.')}
+      ${field('bt-account', 'Account size ($)', state.settings.accountSize || 60000, 'Only affects share counts and dollar P&L. Results in R are unaffected by it.')}
+      ${field('bt-risk', 'Risk per trade (%)', state.settings.riskPct || 0.5, "Your system's sizing rule.")}
+      ${field('bt-wait', 'Days to leave an order resting', state.backtestWait || 20, 'How long a buy order waits before the level it was based on is stale and gets re-derived. A rule the plan builder never made you state — the backtest forces the question.')}
+      ${field('bt-validation', 'Validation window (months)', state.backtestValidation ?? 12, 'A middle slice you can check changes against as often as you like. Set to 0 if you would rather keep all the older data for development.')}
+      ${field('bt-holdout', 'Months held back (out-of-sample)', state.backtestHoldout ?? 12, 'The most recent N months are locked away and excluded from everything shown. You develop on the older data; the held-back slice is the only honest test of whether the rules work on prices you never studied. Set to 0 to disable — but then nothing here can tell you the system works.')}
+    </div>
+    <button class="primary-btn" id="bt-run" type="button">🧪 Run the system over history</button>
+    <p class="hint">Fetches price history for each symbol, so a long list takes a few seconds.
+    Levels are re-derived on every trade from that day's bars only — no lookahead.</p>`;
+  $('#bt-style-toggle').querySelectorAll('button').forEach((b) =>
+    b.addEventListener('click', () => {
+      $('#bt-style-toggle').querySelectorAll('button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.backtestStyle = b.dataset.style;
+    }));
+  // Wrapped, not passed directly: a bare listener would hand the click Event
+  // in as `reveal`, which is truthy — silently unsealing the held-out period
+  // on every ordinary run.
+  $('#bt-run').addEventListener('click', () => runBacktestUI(false));
+}
+
+async function runBacktestUI(reveal = false) {
+  const out = $('#backtest-result');
+  const symbols = $('#bt-symbols').value.trim();
+  if (!symbols) { window.alert('Add at least one symbol.'); return; }
+  state.backtestSymbols = symbols;
+  state.backtestYears = val('bt-years');
+  state.backtestWait = val('bt-wait');
+  state.backtestHoldout = val('bt-holdout');
+  state.backtestValidation = val('bt-validation');
+  const btn = $('#bt-run');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  out.innerHTML = '<div class="loading">Walking the history, one trade at a time…</div>';
+  try {
+    const r = await api('/backtest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbols,
+        years: val('bt-years'),
+        mode: 'risk',
+        accountSize: val('bt-account'),
+        riskPct: val('bt-risk'),
+        maxWaitBars: val('bt-wait'),
+        holdoutMonths: val('bt-holdout'),
+        validationMonths: val('bt-validation'),
+        entryStyle: state.backtestStyle || 'pullback',
+        reveal,
+      }),
+    });
+    state.backtestResult = r;
+    renderBacktestResult(r);
+  } catch (err) {
+    out.innerHTML = `<div class="error-banner">${esc(err.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🧪 Run the system over history';
+  }
+}
+
+const rTxt = (v) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}R`);
+
+function renderBacktestResult(r) {
+  const o = r.overall;
+  if (!o.scored) {
+    $('#backtest-result').innerHTML = `
+      <section class="card"><div class="event-none">
+        No trades fired over that window. With a pullback entry that usually means the
+        stocks never dipped to support within the waiting period — try a longer window,
+        more days to leave an order resting, or the breakout style.
+      </div></section>
+      ${r.errors.length ? errorsCard(r.errors) : ''}`;
+    return;
+  }
+  const expCls = o.avgR > 0 ? 'good' : 'bad';
+  $('#backtest-result').innerHTML = `
+    <div class="scorecard">
+      ${scoreCard('Trades', o.scored,
+        `${o.wins}W / ${o.losses}L · ${r.params.symbols.length} symbols` +
+        (r.splitDate ? ` · development data only, to ${r.splitDate}` : ` · ${r.params.years}y`))}
+      ${scoreCard('Win rate', pct(o.winRate, 0), 'How often it was right')}
+      ${scoreCard('Expectancy', rTxt(o.avgR), `Per trade · ${rTxt(o.totalR)} total`, expCls)}
+      ${scoreCard('Profit factor', o.profitFactor != null ? o.profitFactor.toFixed(2) : '—',
+        'Gross wins ÷ gross losses. Above 1 means the wins carried the losses',
+        o.profitFactor != null && o.profitFactor > 1 ? 'good' : 'bad')}
+      ${scoreCard('Worst drawdown', `−${o.maxDrawdownR}R`,
+        'Deepest peak-to-trough fall — the stretch you would have had to sit through', 'warn')}
+      ${scoreCard('Worst losing streak', o.worstLossStreak,
+        `${o.losses} losses total · ${o.avgDaysHeld}d average hold`)}
+    </div>
+    ${verdictBox(r)}
+    ${validationPanel(r)}
+    ${holdoutPanel(r)}
+    ${variantWarning(r)}
+    ${r.rolling && r.rolling.length > 1 ? `
+      <section class="card">
+        <div class="card-head"><h2>Was the edge steady?</h2>
+          <span class="not-advice" data-tip="Each bar is a 12-month window of the development period, stepped 3 months. Similar heights mean a consistent edge; one tall bar means one good year.">Stability</span>
+        </div>
+        <div id="bt-stability" class="chart-box"></div>
+      </section>` : ''}
+    <section class="card">
+      <div class="card-head"><h2>Equity curve (in R)</h2>
+        <span class="not-advice" data-tip="Cumulative R across the sequence, oldest trade first. Shaded band marks the deepest drawdown.">Shape &gt; total</span>
+      </div>
+      <div id="bt-equity" class="chart-box"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Distribution of results</h2></div>
+      <div id="bt-hist" class="chart-box"></div>
+      <p class="hint">Average win ${rTxt(o.avgWinR)} against average loss ${rTxt(o.avgLossR)}.
+      A wall of small losses with a thin tail of big wins is what a working trend system
+      normally looks like — the tail is where the money is, and it is also why the middle
+      of the wall feels so much like being broken.</p>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Where it breaks down</h2>
+        <span class="not-advice" data-tip="The headline hides the segments. A system with decent overall numbers can be carried entirely by one symbol or one good year.">Segments, not averages</span>
+      </div>
+      ${segmentTable('By symbol', r.bySymbol, 'Symbol')}
+      ${segmentTable('By year', r.byYear, 'Year')}
+      ${segmentTable('By regime at entry', r.byRegime, 'Regime')}
+      ${concentrationNote(r)}
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Every trade</h2>
+        <button class="ghost-btn sm" id="bt-log-all" data-tip="Files all of these in the journal as replay reps. They log as rules-followed by definition, so they become the baseline your live trades get graded against.">📓 Log all to journal</button>
+      </div>
+      <div class="chain-scroll" style="max-height:420px">${tradesTable(r.trades)}</div>
+    </section>
+    ${r.errors.length ? errorsCard(r.errors) : ''}`;
+
+  if (window.charts) {
+    window.charts.equityCurve($('#bt-equity'), o.curve);
+    window.charts.rHistogram($('#bt-hist'), r.rDistribution);
+    const stab = $('#bt-stability');
+    if (stab) window.charts.stabilityChart(stab, r.rolling);
+    const oosHist = $('#bt-oos-hist');
+    if (oosHist && r.oos) window.charts.rHistogram(oosHist, r.oos.rDistribution);
+  }
+  const revealBtn = $('#bt-reveal');
+  if (revealBtn) revealBtn.addEventListener('click', confirmReveal);
+  const logAll = $('#bt-log-all');
+  if (logAll) logAll.addEventListener('click', () => logAllBacktestTrades(r));
+}
+
+// The middle tier. Development data is where you iterate; this is where you
+// check whether an idea survives contact with data you didn't tune it on.
+// Unlike the sealed window it comes back every run — it wears out gradually
+// with reuse instead of being spent in a single look, which is exactly what
+// makes it the right place to try things.
+function validationPanel(r) {
+  if (!r.validation) {
+    if (!r.splitDate) return '';
+    return `
+      <div class="journal-insight" style="background:var(--surface-alt)">
+        <strong>Want somewhere to test changes?</strong> Set <em>Validation window</em> to 12
+        months. It carves a middle slice out of the development data that you can check ideas
+        against as often as you like — so the sealed window stays untouched until you are
+        actually finished.
+      </div>`;
+  }
+  const dev = r.overall, v = r.validation.summary;
+  if (!v.scored) {
+    return `<div class="journal-insight warn-box">
+      <strong>No trades in the validation window.</strong> ${esc(r.validation.from)} to
+      ${esc(r.validation.to)} produced nothing to measure — widen the window, add symbols, or
+      lengthen the history.</div>`;
+  }
+  const held = v.avgR > 0.05 && dev.avgR > 0 && v.avgR >= dev.avgR * 0.5;
+  const thin = v.scored < 20;
+  const gap = dev.avgR != null && v.avgR != null ? v.avgR - dev.avgR : null;
+
+  return `
+    <section class="card validation-card">
+      <div class="card-head"><h2>Validation window · ${esc(r.validation.from)} → ${esc(r.validation.to)}</h2>
+        <span class="not-advice" data-tip="Not sealed. These results come back on every run, so this is the tier to iterate against while you are still deciding.">Check ideas here</span>
+      </div>
+      <div class="window-strip">
+        <div class="window-seg dev"><span>Development</span><strong>${dev.scored}</strong>
+          <em>${rTxt(dev.avgR)}</em><small>iterate freely</small></div>
+        <div class="window-seg val"><span>Validation</span><strong>${v.scored}</strong>
+          <em>${rTxt(v.avgR)}</em><small>check changes here</small></div>
+        <div class="window-seg oos"><span>Held out</span><strong>${r.oosPending ?? 0}</strong>
+          <em>${r.revealed && r.oos ? rTxt(r.oos.summary.avgR) : '🔒'}</em><small>open once, at the end</small></div>
+      </div>
+      <div class="journal-insight ${held ? 'good-box' : 'warn-box'}" style="margin-bottom:0">
+        ${held
+          ? `<strong>✅ Carries over.</strong> ${rTxt(dev.avgR)} in development,
+             <strong>${rTxt(v.avgR)}</strong> here — the edge isn't confined to the data you
+             tuned on. Worth keeping.`
+          : v.avgR > 0.05
+            ? `<strong>🤔 Weaker here.</strong> ${rTxt(dev.avgR)} in development became
+               <strong>${rTxt(v.avgR)}</strong> — still positive, but ${gap != null
+                 ? `${Math.abs(gap).toFixed(2)}R of that development result` : 'some of it'}
+               didn't travel. Prefer the smaller number when you plan.`
+            : `<strong>❌ Doesn't carry.</strong> ${rTxt(dev.avgR)} in development became
+               <strong>${rTxt(v.avgR)}</strong> here. Whatever produced the development number
+               was specific to that stretch. Change something and run again — that's what this
+               window is for, and it costs you nothing.`}
+        ${thin ? `<br><br><strong>Caveat:</strong> only ${v.scored} trades in this window, so it
+          moves around a lot. Treat differences under about 0.3R as noise.` : ''}
+      </div>
+      <p class="hint">Iterating against this window is normal and expected — it's why it exists.
+      Just know it wears out slowly: the more variants you check here, the more the best of them
+      owes to luck, which is what the configuration count is tracking.</p>
+    </section>`;
+}
+
+// The held-out period, locked. Everything above this panel was computed from
+// development data only; this is the part that hasn't been looked at.
+function holdoutPanel(r) {
+  if (!r.splitDate) {
+    return `
+      <div class="journal-insight warn-box">
+        <strong>⚠️ No data held back.</strong> Every trade above was used to produce the number
+        above it, so adjusting the rules and re-running will keep improving that number whether
+        or not the system is any good. Set <em>Months held back</em> to 12 and run again if you
+        want an answer you can trust.
+      </div>`;
+  }
+  const reveals = r.reveals?.count ?? 0;
+  const pending = r.oosPending ?? 0;
+
+  if (!r.revealed || !r.oos) {
+    const thin = pending < 20;
+    return `
+      <section class="card holdout-card">
+        <div class="card-head"><h2>🔒 Held-out period</h2>
+          <span class="not-advice" data-tip="These trades exist and have been simulated. Their results are on the server and have deliberately not been sent to your browser.">Sealed</span>
+        </div>
+        <p><strong>${pending} trades</strong> from <strong>${esc(r.splitDate)}</strong> to today
+        are waiting, and none of them contributed to anything above.</p>
+        <p class="hint">Finish your thinking first — decide the rules, and write down what you
+        expect this period to do. Then look, once. The moment you see it, it stops being
+        evidence and becomes more development data, because you can't un-know it.</p>
+        <p class="hint">${r.validation
+          ? 'Still deciding? Iterate against the <strong>validation window</strong> above as much as you like — that is what it is there for, and nothing you do there touches this.'
+          : 'Still deciding? Turn on a <strong>validation window</strong> in the setup above to get a slice you can test changes against without spending this one.'}
+        And this window refills: it is the last ${state.backtestHoldout ?? 12} months counted from
+        today, so a month from now it holds a month of data that does not exist yet.</p>
+        ${thin ? `<div class="calc-warning">⚠️ Only ${pending} trades in the held-out window —
+          a thin test. More symbols or a longer holdout would make the answer firmer.</div>` : ''}
+        ${reveals > 0 ? `<div class="calc-warning">You have already unsealed a held-out period
+          ${reveals} time${reveals === 1 ? '' : 's'}. Each look spends some of the evidence.</div>` : ''}
+        <button class="primary-btn" id="bt-reveal" type="button">🔓 Unseal the held-out period</button>
+      </section>`;
+  }
+
+  // Revealed.
+  const is = r.overall, oos = r.oos.summary;
+  if (!oos.scored) {
+    return `<section class="card holdout-card">
+      <div class="card-head"><h2>🔓 Held-out period</h2></div>
+      <div class="event-none">No trades fired in the held-out window, so it can't test anything.
+      Try a longer holdout or more symbols.</div></section>`;
+  }
+
+  // Did it survive? Compare like with like, and be strict: an edge that halves
+  // out of sample was probably half luck to begin with.
+  const held = oos.avgR > 0.05 && is.avgR > 0 && oos.avgR >= is.avgR * 0.5;
+  const partial = !held && oos.avgR > 0.05;
+  const verdictCls = held ? 'good-box' : 'warn-box';
+  const verdict = held
+    ? `✅ <strong>It held up.</strong> The rules made ${rTxt(oos.avgR)} per trade on prices you
+       never studied, against ${rTxt(is.avgR)} in development. That is the closest thing to real
+       evidence this tool can give you.`
+    : partial
+      ? `🤔 <strong>It faded.</strong> ${rTxt(is.avgR)} in development became ${rTxt(oos.avgR)}
+         out of sample — still positive, but a good part of the development edge was specific to
+         that stretch of history. Size accordingly, and don't trust the bigger number.`
+      : `❌ <strong>It did not survive.</strong> ${rTxt(is.avgR)} in development became
+         ${rTxt(oos.avgR)} on data you hadn't seen. The development result was a description of
+         the past, not a system. That is a genuinely useful thing to find out for free.`;
+
+  const cmp = (label, a, b, fmt) => `
+    <tr><td>${label}</td><td>${fmt(a)}</td><td>${fmt(b)}</td></tr>`;
+  const rf = (v) => (v == null ? '—' : rTxt(v));
+  const pf = (v) => (v == null ? '—' : pct(v, 0));
+
+  return `
+    <section class="card holdout-card">
+      <div class="card-head"><h2>🔓 Held-out period · ${esc(r.oos.from)} to today</h2>
+        <span class="not-advice" data-tip="These trades were simulated on data excluded from everything you used to develop the rules.">Out of sample</span>
+      </div>
+      <div class="journal-insight ${verdictCls}" style="margin-top:0">${verdict}
+        ${oos.scored < 20 ? `<br><br><strong>Caveat:</strong> only ${oos.scored} trades out of
+          sample. Treat this as a smell test, not a verdict — one more symbol either way could
+          flip it.` : ''}
+        ${reveals > 1 ? `<br><br><strong>⚠️ Look #${reveals}.</strong> This window has been
+          unsealed before. If you changed the rules in between, it is no longer an out-of-sample
+          test — it has quietly become part of your development data.` : ''}
+      </div>
+      <div class="chain-scroll"><table class="chain-table paper-table">
+        <thead><tr><th></th><th>Development</th><th>Held out</th></tr></thead>
+        <tbody>
+          ${cmp('Trades', is.scored, oos.scored, (v) => v)}
+          ${cmp('Win rate', is.winRate, oos.winRate, pf)}
+          ${cmp('Expectancy', is.avgR, oos.avgR, rf)}
+          ${cmp('Average win', is.avgWinR, oos.avgWinR, rf)}
+          ${cmp('Average loss', is.avgLossR, oos.avgLossR, rf)}
+          ${cmp('Profit factor', is.profitFactor, oos.profitFactor, (v) => (v == null ? '—' : v.toFixed(2)))}
+          ${cmp('Worst drawdown', is.maxDrawdownR, oos.maxDrawdownR, (v) => (v == null ? '—' : '−' + v + 'R'))}
+          ${cmp('Worst losing streak', is.worstLossStreak, oos.worstLossStreak, (v) => v)}
+        </tbody>
+      </table></div>
+      <div id="bt-oos-hist" class="chart-box"></div>
+      <p class="hint">From here on, this window is spent. If you change the rules and want another
+      honest test, you need data that neither you nor the rules have seen — which in practice
+      means waiting for more of it to happen.</p>
+    </section>`;
+}
+
+// How many different rule configurations have been tried. Try enough of them
+// and one will look good by chance alone; the count is the context that makes
+// a flattering in-sample number readable.
+function variantWarning(r) {
+  const n = r.variants?.variants ?? 0;
+  if (n < 4) return '';
+  const severe = n >= 8;
+  return `
+    <div class="journal-insight ${severe ? 'warn-box' : ''}" ${severe ? '' : 'style="background:var(--surface-alt)"'}>
+      <strong>${severe ? '⚠️ ' : ''}${n} rule configurations tried so far${severe ? '.' : '.'}</strong>
+      ${severe
+        ? `At that many attempts you should <em>expect</em> one of them to look good on the
+           development data by luck alone, even if none of them has an edge. Picking the
+           best-scoring variant is how a backtest gets turned into a story. Whatever you settle
+           on, the held-out period below is the only thing that can tell you which it was.`
+        : `Worth tracking: the more variants you try, the more the best-scoring one owes to
+           luck rather than skill. Settle on rules for a reason, not because they topped a
+           leaderboard.`}
+    </div>`;
+}
+
+async function confirmReveal() {
+  const ok = window.confirm(
+    'Unseal the held-out period?\n\n' +
+    'This is meant to happen once, after you have settled the rules. Looking at it now ' +
+    'means you cannot use it as an unbiased test of anything you change afterwards.\n\n' +
+    'Have you finished deciding, and written down what you expect?'
+  );
+  if (!ok) return;
+  await runBacktestUI(true);
+}
+
+// The headline verdict: does the system pay, and does the regime filter earn its keep?
+function verdictBox(r) {
+  const o = r.overall;
+  // A hair above break-even is not an edge. Calling +0.01R "positive
+  // expectancy" would be technically true and practically a lie: after
+  // commissions and slippage — neither of which this sim charges you — a
+  // result this thin is indistinguishable from flipping coins.
+  const marginal = Math.abs(o.avgR) < 0.06 ||
+    (o.profitFactor != null && o.profitFactor > 0.95 && o.profitFactor < 1.05);
+  const works = !marginal && o.avgR > 0 && o.profitFactor > 1;
+  const thin = o.scored < 30;
+  const fv = r.filterVerdict;
+
+  let filterLine = '';
+  if (fv) {
+    filterLine = fv.helps
+      ? `<li><strong>The regime filter earns its keep.</strong> Trades taken in a golden-cross
+         regime averaged <strong>${rTxt(fv.goldenAvgR)}</strong> against
+         <strong>${rTxt(fv.deathAvgR)}</strong> in a death-cross regime — an edge of
+         ${rTxt(fv.edge)} per trade. Rule 2 is doing real work.</li>`
+      : `<li><strong>The regime filter is not paying for itself here.</strong> Golden-cross
+         trades averaged <strong>${rTxt(fv.goldenAvgR)}</strong> against
+         <strong>${rTxt(fv.deathAvgR)}</strong> in a death-cross regime. On this sample the
+         filter is costing you trades without buying safety — worth a longer window before
+         changing rule 2, but note it.</li>`;
+  } else {
+    filterLine = `<li>Not enough trades in both regimes to judge the golden-cross filter yet.
+      Add symbols or years if you want to test rule 2.</li>`;
+  }
+
+  const dev = r.splitDate ? ' on the development data' : ' over this sample';
+  const headline = marginal ? `➖ Too close to call${dev} — this is break-even.`
+    : works ? `📈 Positive expectancy${dev}.`
+    : `📉 This did not pay${dev}.`;
+  let body;
+  if (marginal) {
+    body = `That is a rounding error, not an edge. This backtest charges no commission and
+      assumes every order fills at your price, so a real account running this would have come
+      out behind. Treat it as "no evidence the system works" rather than a near miss.`;
+  } else if (works) {
+    body = `Being right ${pct(o.winRate, 0)} of the time was enough because the average win
+      (${rTxt(o.avgWinR)}) was bigger than the average loss (${rTxt(o.avgLossR)}).`;
+  } else {
+    body = `The wins were not big enough to cover the losses. Before changing anything, check the
+      segments below — it may be one symbol or one year doing the damage.`;
+  }
+  return `
+    <div class="journal-insight ${works ? 'good-box' : 'warn-box'}">
+      <strong>${headline}</strong>
+      ${o.scored} trades, ${pct(o.winRate, 0)} win rate, ${rTxt(o.avgR)} per trade.
+      ${body}
+      <ul style="margin:8px 0 0 18px;padding:0">
+        ${filterLine}
+        ${thin ? `<li><strong>${o.scored} trades is a thin sample.</strong> Anything under about
+          30 is closer to a rumour than a result — widen the symbol list or the years before
+          you trust it.</li>` : ''}
+        <li>You would have had to sit through a <strong>−${o.maxDrawdownR}R</strong> drawdown and
+        <strong>${o.worstLossStreak} losses in a row</strong>. That is the number that decides
+        whether you would still be running this system when it started working again.</li>
+        ${r.splitDate ? `<li><strong>None of this is evidence yet.</strong> These are the trades
+          you developed the rules against, so a good number here is partly a description of how
+          well you fitted them. The held-out period below is the only part that can test it.</li>` : ''}
+      </ul>
+    </div>`;
+}
+
+// Is the whole result resting on one symbol? Averages hide that; this doesn't.
+function concentrationNote(r) {
+  const scored = r.bySymbol.filter((s) => s.scored > 0);
+  if (scored.length < 3 || r.overall.totalR == null) return '';
+  const best = scored.reduce((a, b) => ((b.totalR ?? 0) > (a.totalR ?? 0) ? b : a));
+  const bestR = best.totalR ?? 0;
+  if (bestR <= 0) return '';
+  const rest = r.overall.totalR - bestR;
+  const share = r.overall.totalR > 0 ? bestR / r.overall.totalR : null;
+  // Only worth saying when one name is actually carrying the result: either it
+  // beats everything else combined, or the rest of the book lost money.
+  if (rest > 0 && (share == null || share < 0.5)) return '';
+  const headline = rest <= 0
+    ? `${esc(best.key)} made ${rTxt(bestR)} while every other symbol combined
+       ${rest < 0 ? `lost ${rTxt(rest)}` : 'made nothing'}.`
+    : `${esc(best.key)} contributed ${rTxt(bestR)} of the ${rTxt(r.overall.totalR)} total
+       — ${pct(share, 0)} of the result — leaving ${rTxt(rest)} from everything else.`;
+  return `
+    <div class="journal-insight warn-box" style="margin:12px 0 0">
+      <strong>⚠️ One symbol is carrying this.</strong> ${headline}
+      A system carried by a single name hasn't been shown to work; it's shown that one stock
+      moved. Re-run without it and see what's left.
+    </div>`;
+}
+
+function segmentTable(title, rows, keyLabel) {
+  const live = rows.filter((x) => x.scored > 0);
+  if (!live.length) return '';
+  const body = live.map((x) => {
+    const cls = x.avgR > 0 ? 'good' : 'bad';
+    return `<tr>
+      <td><strong>${esc(String(x.key))}</strong></td>
+      <td>${x.scored}</td>
+      <td>${pct(x.winRate, 0)}</td>
+      <td class="${cls}">${rTxt(x.avgR)}</td>
+      <td class="${cls}">${rTxt(x.totalR)}</td>
+      <td>${x.maxDrawdownR != null ? '−' + x.maxDrawdownR + 'R' : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <h3 class="segment-title">${title}</h3>
+    <div class="chain-scroll"><table class="chain-table paper-table">
+      <thead><tr>
+        <th>${keyLabel}</th><th>Trades</th><th>Win rate</th>
+        <th data-tip="Average result per trade in this bucket. This is the number to compare across rows.">Expectancy</th>
+        <th>Total R</th><th>Max DD</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table></div>`;
+}
+
+function tradesTable(trades) {
+  const rows = trades.map((t) => {
+    const cls = t.rMultiple == null ? '' : t.rMultiple > 0 ? 'good' : 'bad';
+    const icon = t.outcome === 'target' ? '🎯' : t.outcome === 'stopped' ? '🛑' : '⏳';
+    return `<tr>
+      <td>${esc(t.symbol)}</td>
+      <td>${esc(t.entryDate)}</td>
+      <td>${money(t.entry)}</td>
+      <td>${money(t.exitPrice)}</td>
+      <td>${t.daysHeld}d</td>
+      <td>${esc(t.regime || '—')}</td>
+      <td>${icon}</td>
+      <td class="${cls}">${t.rMultiple != null ? rTxt(t.rMultiple) : '—'}</td>
+    </tr>`;
+  }).join('');
+  return `<table class="chain-table paper-table">
+    <thead><tr><th>Symbol</th><th>Entered</th><th>Entry</th><th>Exit</th><th>Held</th>
+      <th>Regime</th><th></th><th>R</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function errorsCard(errors) {
+  return `<section class="card"><div class="card-head"><h2>Skipped</h2></div>
+    <ul class="news-list">${errors.map((e) =>
+      `<li>${esc(e.symbol)} — ${esc(e.error)}</li>`).join('')}</ul></section>`;
+}
+
+async function logAllBacktestTrades(r) {
+  const closed = r.trades.filter((t) => t.outcome !== 'open');
+  if (!closed.length) return;
+  if (!window.confirm(
+    `Log ${closed.length} backtest trades to the journal?\n\n` +
+    `They file as replay reps that followed the rules, which is what makes them a baseline ` +
+    `for grading your live trades. Note this will dominate your journal's statistics.`)) return;
+  const btn = $('#bt-log-all');
+  btn.disabled = true;
+  let ok = 0;
+  for (const t of closed) {
+    const riskPS = round2(t.entry - t.stop);
+    const saved = await logTrade({
+      symbol: t.symbol, kind: 'stock', source: 'replay', status: 'closed',
+      entry_style: t.style, entry: t.entry, target: t.target, stop: t.stop, shares: t.shares,
+      risk_per_share: riskPS,
+      planned_risk: riskPS && t.shares ? round2(riskPS * t.shares) : null,
+      reward_risk: riskPS ? round2((t.target - t.entry) / riskPS) : null,
+      thesis: `Backtest: ${t.style} rule, levels as of ${t.asOf}, ${t.regime || 'unknown'} regime.`,
+      entry_price: t.entryPrice, exit_price: t.exitPrice,
+      entry_date: t.entryDate, exit_date: t.exitDate,
+      outcome: t.outcome, followed_rules: true,
+    }, { announce: false });
+    if (saved) ok++;
+    btn.textContent = `Logging ${ok}/${closed.length}…`;
+  }
+  btn.textContent = `✓ Logged ${ok}`;
+}
+
+$('#backtest-btn').addEventListener('click', openBacktest);
 
 // ---------- Settings ----------
 function setKeyPlaceholder(sel, st) {

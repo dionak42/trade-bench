@@ -6,6 +6,7 @@ import { getNews, getNextEarnings, searchSymbols } from './finnhub.js';
 import { ivRankFor } from './ivrank.js';
 import { buildAnalysis, scanSymbol, getCoveredCallIdea } from './analysis.js';
 import { runReplay } from './replay.js';
+import { runBacktest } from './backtest.js';
 import { buildRegime } from './regime.js';
 import { getMacroCalendar } from './econ.js';
 import {
@@ -13,6 +14,8 @@ import {
 } from './paper.js';
 import {
   listWatchlist, addWatchlist, removeWatchlist, getSetting, setSetting,
+  listTrades, createTrade, updateTrade, deleteTrade, tradeStats,
+  variantSignature, recordVariant, variantStats, recordOosReveal, oosRevealStats,
   addEconEvent, removeEconEvent,
 } from './db.js';
 import { cfg } from './config.js';
@@ -126,6 +129,78 @@ router.post('/replay/:symbol', wrap(async (req, res) => {
   res.json(result);
 }));
 
+// Run the system across many symbols and years — a sequence of trades rather
+// than one. Slow by nature (one bar fetch per symbol), so the symbol list is
+// capped and every symbol is fetched in parallel.
+router.post('/backtest', wrap(async (req, res) => {
+  const body = req.body ?? {};
+  const symbols = [...new Set(
+    String(body.symbols || '')
+      .split(',').map((x) => x.trim().toUpperCase()).filter(Boolean)
+  )].slice(0, 25);
+  if (!symbols.length) return res.status(400).json({ error: 'Pick at least one symbol.' });
+
+  const years = Math.min(Math.max(Number(body.years) || 3, 1), 5);
+
+  // Newest data is held back, oldest is developed on — never the reverse.
+  // The validation window sits between the two.
+  const monthsAgo = (n) => {
+    const d = new Date();
+    d.setUTCMonth(d.getUTCMonth() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const holdoutMonths = Math.min(Math.max(Number(body.holdoutMonths ?? 12), 0), 36);
+  const validationMonths = Math.min(Math.max(Number(body.validationMonths ?? 0), 0), 36);
+  const splitDate = holdoutMonths > 0 ? monthsAgo(holdoutMonths) : null;
+  const validationDate = validationMonths > 0
+    ? monthsAgo(holdoutMonths + validationMonths)
+    : null;
+
+  const params = {
+    years, splitDate, validationDate,
+    mode: body.mode === 'capital' ? 'capital' : 'risk',
+    accountSize: Number(body.accountSize) || 0,
+    riskPct: Number(body.riskPct) || 1,
+    capital: Number(body.capital) || 0,
+    entryStyle: body.entryStyle === 'breakout' ? 'breakout' : 'pullback',
+    stopAtrMult: Number(body.stopAtrMult) || 2,
+    maxWaitBars: Math.min(Math.max(Number(body.maxWaitBars) || 20, 1), 120),
+  };
+  const result = await runBacktest(symbols, params);
+
+  // Log the configuration before deciding what to return: the count of things
+  // tried is what makes a flattering in-sample number readable later.
+  const signature = variantSignature({ symbols, ...params });
+  const variants = recordVariant(signature, result.overall?.avgR ?? null);
+
+  const reveal = body.reveal === true;
+  const oos = result.oos;
+  if (reveal && oos) {
+    // An empty held-out window still gets shown — "nothing fired" is a result
+    // the caller needs to see — but it costs nothing, so it isn't logged.
+    if (oos.summary.scored > 0) {
+      recordOosReveal({
+        splitDate, signature,
+        oosTrades: oos.summary.scored,
+        oosAvgR: oos.summary.avgR,
+        inSampleAvgR: result.overall?.avgR ?? null,
+      });
+    }
+  } else {
+    // Held back on purpose. The pending COUNT still goes out — knowing how
+    // many trades are waiting says nothing about how they went.
+    delete result.oos;
+  }
+
+  res.json({ ...result, signature, variants, reveals: oosRevealStats(), revealed: reveal });
+}));
+
+// How much of the discipline has been spent: configurations tried, and how
+// many times the held-out period has been looked at.
+router.get('/backtest/discipline', wrap(async (_req, res) => {
+  res.json({ variants: variantStats(), reveals: oosRevealStats() });
+}));
+
 // ---- Paper trading (Alpaca paper account) ----
 router.get('/paper/account', wrap(async (_req, res) => {
   res.json(await getAccount());
@@ -151,6 +226,38 @@ router.delete('/paper/order/:id', wrap(async (req, res) => {
 
 router.post('/paper/close/:symbol', wrap(async (req, res) => {
   res.json({ order: await closePosition(req.params.symbol) });
+}));
+
+// ---- Trade journal ----
+// One row per decision: written when you commit to a plan, updated when it
+// fills, reviewed when it's done. Stats live in the DB layer so the numbers
+// are derived from the plan, never posted by the browser.
+router.get('/journal/stats', wrap(async (_req, res) => {
+  res.json(tradeStats());
+}));
+
+router.get('/journal', wrap(async (req, res) => {
+  const { status, symbol, source, limit } = req.query;
+  res.json({ trades: listTrades({ status, symbol, source, limit }) });
+}));
+
+router.post('/journal', wrap(async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.symbol || !String(body.symbol).trim()) {
+    return res.status(400).json({ error: 'symbol is required' });
+  }
+  res.status(201).json({ trade: createTrade(body) });
+}));
+
+router.patch('/journal/:id', wrap(async (req, res) => {
+  const trade = updateTrade(req.params.id, req.body ?? {});
+  if (!trade) return res.status(404).json({ error: 'No such trade.' });
+  res.json({ trade });
+}));
+
+router.delete('/journal/:id', wrap(async (req, res) => {
+  deleteTrade(req.params.id);
+  res.status(204).end();
 }));
 
 // ---- Settings (API keys, display name) ----

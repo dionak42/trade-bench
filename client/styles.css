@@ -628,6 +628,101 @@ body {
 .chain-table tbody tr.target-best.selected { box-shadow: inset 3px 0 0 var(--good); }
 .chain-table .star { color: var(--good); cursor: help; font-size: 12px; }
 
+/* ---------- Trade journal ---------- */
+.journal-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.journal-filters select {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-size: 13px; font-family: var(--font);
+}
+
+.good-box { background: var(--good-soft); color: var(--good); border-color: transparent; }
+.warn-box { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+
+.journal-insight {
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px;
+  font-size: 13px; line-height: 1.55;
+}
+
+.journal-card {
+  border: 1px solid var(--border); border-left: 3px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
+  background: var(--surface-alt);
+}
+.journal-card.broke { border-left-color: var(--warn); }
+.journal-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.journal-head > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.journal-sym { font-size: 15px; letter-spacing: 0.3px; }
+.journal-date { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.journal-plan { font-size: 13px; margin-top: 6px; font-family: var(--mono); }
+.journal-thesis { font-size: 13px; color: var(--muted); margin-top: 6px; font-style: italic; }
+.journal-lesson { font-size: 13px; margin-top: 6px; }
+.journal-outcome {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  margin-top: 8px; font-size: 13px;
+}
+.journal-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+.journal-review {
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+}
+.journal-review .calc-inputs { margin-bottom: 10px; }
+.journal-review .field { margin-bottom: 10px; }
+.journal-review .rules-toggle { width: fit-content; }
+
+/* Selects and textareas match the existing .field input styling. */
+.field select, .field textarea {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-size: 14px;
+  font-family: var(--font); width: 100%; box-sizing: border-box;
+}
+.field textarea { resize: vertical; line-height: 1.5; }
+.field select:focus, .field textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+.plan-thesis-field { margin-top: 12px; }
+.plan-buttons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.plan-buttons .place-btn { margin-top: 0; }
+
+/* ---------- System backtest ---------- */
+.segment-title {
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+  color: var(--muted); margin: 18px 0 8px;
+}
+.segment-title:first-of-type { margin-top: 4px; }
+#backtest-controls .calc-inputs { margin: 12px 0; }
+#backtest-controls .primary-btn { margin-top: 4px; }
+
+/* Phone: the two-column input grid and the header button row both need to
+   stack — the app is used from a home-screen icon, not just a desktop. */
+@media (max-width: 640px) {
+  .calc-inputs { grid-template-columns: 1fr; }
+  .topbar-actions { flex-wrap: wrap; justify-content: flex-end; }
+  /* Five tabs no longer fit across a phone — scroll the strip rather than
+     wrapping it, so it still reads as one control. */
+  .view-toggle { display: flex; max-width: 100%; overflow-x: auto; }
+  .view-toggle button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
+}
+
+.holdout-card { border-left: 3px solid var(--accent); }
+.holdout-card .primary-btn { margin-top: 12px; }
+.holdout-card p { font-size: 13.5px; line-height: 1.6; margin: 0 0 8px; }
+
+.validation-card { border-left: 3px solid var(--warn); }
+
+/* The three windows as one strip, so the split is obvious at a glance. */
+.window-strip { display: flex; gap: 8px; margin: 4px 0 14px; flex-wrap: wrap; }
+.window-seg {
+  flex: 1 1 140px; border-radius: 10px; padding: 10px 12px;
+  background: var(--surface-alt); border: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.window-seg span { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 700; }
+.window-seg strong { font-size: 20px; line-height: 1.1; }
+.window-seg em { font-style: normal; font-weight: 700; font-size: 13px; }
+.window-seg small { font-size: 11px; color: var(--muted); }
+.window-seg.dev { border-left: 3px solid var(--muted); }
+.window-seg.val { border-left: 3px solid var(--warn); }
+.window-seg.oos { border-left: 3px solid var(--accent); }
+
 /* ---------- Market regime panel ---------- */
 .regime-panel, .macro-panel { max-width: 1200px; margin: 0 auto; }
 

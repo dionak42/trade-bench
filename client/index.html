@@ -17,6 +17,8 @@
     </form>
     <div class="topbar-actions">
       <button id="paper-btn" class="ghost-btn" type="button" title="Your paper trading account">📈 Paper</button>
+      <button id="journal-btn" class="ghost-btn" type="button" title="Your trade journal — every decision and how it turned out">📓 Journal</button>
+      <button id="backtest-btn" class="ghost-btn" type="button" title="Run your system over years of history across many symbols">🧪 Test system</button>
       <button id="tour-btn" class="ghost-btn" type="button" title="Take a guided tour">Tour</button>
       <button id="help-btn" class="ghost-btn" type="button" title="How to use this app">? Help</button>
       <button id="settings-btn" class="ghost-btn" type="button" title="Settings (API keys)">⚙</button>
@@ -50,6 +52,8 @@
         <button data-view="analysis" class="active" type="button">🔍 Research</button>
         <button data-view="planner" type="button">📊 Options</button>
         <button data-view="paper" type="button">📈 Paper</button>
+        <button data-view="journal" type="button">📓 Journal</button>
+        <button data-view="backtest" type="button">🧪 Test</button>
       </div>
 
       <div id="planner-view">
@@ -150,6 +154,44 @@
           <div class="card-head"><h2>Open Orders</h2></div>
           <div id="paper-orders"></div>
         </section>
+      </div>
+
+      <div id="journal-view" class="hidden">
+        <div class="paper-head">
+          <span class="not-advice" data-tip="One row per decision — the plan you committed to, what actually happened, and whether you followed your own rules. Reps only teach you something once they are written down.">📓 Every decision, and whether you followed your rules</span>
+          <div class="journal-filters">
+            <select id="journal-status-filter" aria-label="Filter by status">
+              <option value="">All statuses</option>
+              <option value="planned">Planned</option>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+            </select>
+            <select id="journal-symbol-filter" aria-label="Filter by symbol">
+              <option value="">All symbols</option>
+            </select>
+            <button id="journal-refresh" class="ghost-btn" type="button">↻ Refresh</button>
+          </div>
+        </div>
+        <div id="journal-stats" class="scorecard"></div>
+        <div id="journal-insight"></div>
+        <section class="card">
+          <div class="card-head">
+            <h2>Trades</h2>
+            <span class="not-advice" data-tip="Grade each closed trade on whether you followed your plan — not on whether it made money. A loss that obeyed the rules is a pass; a win you chased is a fail.">Grade the process, not the P&amp;L</span>
+          </div>
+          <div id="journal-list"></div>
+        </section>
+      </div>
+
+      <div id="backtest-view" class="hidden">
+        <div class="paper-head">
+          <span class="not-advice" data-tip="Runs your system across every symbol you pick, one trade after another, over years of history. Levels are re-derived from scratch on each trade using only the bars available that day — no lookahead. A backtest assumes your orders fill at your price and ignores commissions and slippage, so read the shape of the results, not the total.">🧪 Your system over a sequence of trades — backtest, not a prediction</span>
+        </div>
+        <section class="card">
+          <div class="card-head"><h2>Test setup</h2></div>
+          <div id="backtest-controls"></div>
+        </section>
+        <div id="backtest-result"></div>
       </div>
     </div>
 

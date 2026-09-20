@@ -10,6 +10,9 @@ below.
 
 > Educational — a practice for planning and review, not financial advice.
 
+Companion doc: [`SYSTEM.md`](SYSTEM.md) holds the standing rules — universe, regime
+filter, sizing, exits — that an idea written this way gets measured against.
+
 ## Principles
 
 **1. Invalidation before entry.**
