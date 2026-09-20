@@ -77,16 +77,28 @@ actually run, and checking prices daily is how a plan turns into a reaction.
 I do not skip a phase because I feel ready. The journal decides.
 
 **Phase 1 — Backtest only. No money, real or paper.**
-Run **🧪 Test system** across the whole watchlist over 3–5 years. Before looking
-at the output I write down what I expect the win rate and average R to be, so
-the comparison is honest. Then I read the segments, not just the headline: by
-symbol, by year, by regime.
+Run **🧪 Test system** across the whole watchlist over 3–5 years, with
+**12 months held back**. Everything I see is development data. Before looking at
+the output I write down what I expect the win rate and average R to be, so the
+comparison is honest. Then I read the segments, not just the headline: by
+symbol, by year, by regime, and whether the edge was steady across rolling
+windows or arrived in one stretch.
 
-*Advance when:* I can state from memory my system's **expectancy, worst
-drawdown, and worst losing streak**, and the result isn't resting on one symbol
-or one good year. If the headline is within about ±0.05R of zero, that is not a
-near miss — it's no evidence the system works, and no commissions or slippage
-have even been charged yet.
+**I do not unseal the held-out period until I have finished deciding.** It is
+single-use: the moment I look, it stops being a test and becomes more
+development data, because I can't un-know it. When I do look, I write down my
+prediction first.
+
+*Advance when:* the rules **survive the held-out period** — still positive, and
+not less than about half the development expectancy — and I can state from
+memory my system's **expectancy, worst drawdown, and worst losing streak**, and
+the result isn't resting on one symbol or one good year. If the development
+headline is within about ±0.05R of zero, that is not a near miss — it's no
+evidence the system works, and no commissions or slippage have even been
+charged yet.
+
+If it doesn't survive, that is a result, not a setback: I found out for free
+what would otherwise have cost me real money to learn.
 
 Also worth doing here: a handful of single replays in the Research tab, logged
 to the journal one at a time. Not for the statistics — the backtest already has
@@ -142,6 +154,14 @@ loss until nothing is left. So:
    reason. "My average loss is -1.4R against a planned -1.0R across 30 trades,
    so my stops are getting jumped" is a reason.
 4. **One change at a time.** Two at once and I learn nothing from either.
+5. **Count the variants.** The app tracks how many rule configurations I've
+   tested. Past about eight, I should expect the best-scoring one to look good
+   by luck alone — so "it scored highest" stops being a reason for anything.
+   Picking the winner off a leaderboard is how a backtest becomes a story.
+6. **A changed rule needs unseen data.** Once I've unsealed a held-out period, I
+   can't retest against it. Either the change waits for new history to
+   accumulate, or I accept that I'm now developing without a safety net and
+   size down accordingly.
 5. **Log the change here with the date and the evidence.** The git history of
    this file is the record of how my thinking actually developed.
 
@@ -163,11 +183,16 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 | Regime filter | Golden cross only | Check how many skipped setups would have won |
 | Hold period | No time limit | If winners resolve in ~20 days, dead trades tie up risk |
 | Order resting time | 20 trading days | Compare fill rate and expectancy at 10 / 20 / 40 in the backtest |
+| Holdout length | 12 months | Enough trades out of sample to judge? If under ~20, lengthen it |
 | Stocks only | No options | Revisit only after a full phase cycle, if ever |
 
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-20** — v1.3: Phase 1 now requires surviving a 12-month held-out
+  period, not just scoring well in development. Added two rules for changing
+  rules: count the variants tried, and accept that a changed rule needs unseen
+  data before it can be tested again.
 - **2026-09-20** — v1.2: added the order-resting rule (20 trading days), which
   the backtest forced me to make explicit. Phase 1 rewritten around the batch
   backtest rather than 30 manual replays — same lesson, better evidence.

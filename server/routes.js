@@ -13,6 +13,7 @@ import {
 import {
   listWatchlist, addWatchlist, removeWatchlist, getSetting, setSetting,
   listTrades, createTrade, updateTrade, deleteTrade, tradeStats,
+  variantSignature, recordVariant, variantStats, recordOosReveal, oosRevealStats,
 } from './db.js';
 import { cfg } from './config.js';
 
@@ -109,8 +110,19 @@ router.post('/backtest', wrap(async (req, res) => {
   if (!symbols.length) return res.status(400).json({ error: 'Pick at least one symbol.' });
 
   const years = Math.min(Math.max(Number(body.years) || 3, 1), 5);
-  const result = await runBacktest(symbols, {
-    years,
+
+  // The held-out window is the most recent slice: you develop on older data
+  // and validate on newer, never the reverse.
+  const holdoutMonths = Math.min(Math.max(Number(body.holdoutMonths ?? 12), 0), 36);
+  let splitDate = null;
+  if (holdoutMonths > 0) {
+    const d = new Date();
+    d.setUTCMonth(d.getUTCMonth() - holdoutMonths);
+    splitDate = d.toISOString().slice(0, 10);
+  }
+
+  const params = {
+    years, splitDate,
     mode: body.mode === 'capital' ? 'capital' : 'risk',
     accountSize: Number(body.accountSize) || 0,
     riskPct: Number(body.riskPct) || 1,
@@ -118,8 +130,40 @@ router.post('/backtest', wrap(async (req, res) => {
     entryStyle: body.entryStyle === 'breakout' ? 'breakout' : 'pullback',
     stopAtrMult: Number(body.stopAtrMult) || 2,
     maxWaitBars: Math.min(Math.max(Number(body.maxWaitBars) || 20, 1), 120),
-  });
-  res.json(result);
+  };
+  const result = await runBacktest(symbols, params);
+
+  // Log the configuration before deciding what to return: the count of things
+  // tried is what makes a flattering in-sample number readable later.
+  const signature = variantSignature({ symbols, ...params });
+  const variants = recordVariant(signature, result.overall?.avgR ?? null);
+
+  const reveal = body.reveal === true;
+  const oos = result.oos;
+  if (reveal && oos) {
+    // An empty held-out window still gets shown — "nothing fired" is a result
+    // the caller needs to see — but it costs nothing, so it isn't logged.
+    if (oos.summary.scored > 0) {
+      recordOosReveal({
+        splitDate, signature,
+        oosTrades: oos.summary.scored,
+        oosAvgR: oos.summary.avgR,
+        inSampleAvgR: result.overall?.avgR ?? null,
+      });
+    }
+  } else {
+    // Held back on purpose. The pending COUNT still goes out — knowing how
+    // many trades are waiting says nothing about how they went.
+    delete result.oos;
+  }
+
+  res.json({ ...result, signature, variants, reveals: oosRevealStats(), revealed: reveal });
+}));
+
+// How much of the discipline has been spent: configurations tried, and how
+// many times the held-out period has been looked at.
+router.get('/backtest/discipline', wrap(async (_req, res) => {
+  res.json({ variants: variantStats(), reveals: oosRevealStats() });
 }));
 
 // ---- Paper trading (Alpaca paper account) ----

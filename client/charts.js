@@ -225,5 +225,37 @@
     container.innerHTML = svg(W, H, bars);
   }
 
-  window.charts = { rsiSparkline, priceChart, payoffChart, replayChart, equityCurve, rHistogram };
+
+  // ---------- Stability across rolling windows ----------
+  // One bar per overlapping window of the development period. A system whose
+  // bars are all roughly the same height had a steady edge; one carried by a
+  // single tall bar had a good year, which is a different claim entirely.
+  function stabilityChart(container, windows) {
+    if (!windows || windows.length < 2) { container.innerHTML = ''; return; }
+    const W = 640, H = 170, padL = 8, padR = 8, padT = 16, padB = 30;
+    const vals = windows.map((w) => w.avgR ?? 0);
+    const lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+    const sy = scale(lo, hi, H - padB, padT);
+    const bw = (W - padL - padR) / windows.length;
+    const zeroY = sy(0);
+    const bars = windows.map((w, i) => {
+      const v = w.avgR ?? 0;
+      const x = padL + i * bw + bw * 0.18;
+      const wd = bw * 0.64;
+      const y = v >= 0 ? sy(v) : zeroY;
+      const h = Math.max(1, Math.abs(sy(v) - zeroY));
+      const color = v >= 0 ? 'var(--good)' : 'var(--bad)';
+      return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${wd.toFixed(1)}"
+                height="${h.toFixed(1)}" fill="${color}" opacity="0.8" rx="2" />` +
+        txt(x + wd / 2, (v >= 0 ? y - 4 : y + h + 10), `${v >= 0 ? '+' : ''}${v.toFixed(2)}`,
+          { anchor: 'middle', size: 9, weight: '700', color }) +
+        txt(x + wd / 2, H - padB + 13, w.start.slice(2, 7), { anchor: 'middle', size: 8.5 });
+    }).join('');
+    const zero = `<line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${W - padR}" y2="${zeroY.toFixed(1)}"
+                    stroke="var(--border)" stroke-width="1" />`;
+    container.innerHTML = svg(W, H, zero + bars +
+      txt(padL, H - 4, 'each bar = a 12-month window, stepped 3 months', { size: 8.5 }));
+  }
+
+  window.charts = { rsiSparkline, priceChart, payoffChart, replayChart, equityCurve, rHistogram, stabilityChart };
 })();

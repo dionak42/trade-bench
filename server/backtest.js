@@ -195,7 +195,7 @@ const WARMUP_DAYS = 300;
 // `fetchBars` is injectable so the whole pipeline can be exercised against
 // deterministic synthetic history in tests, without a live data feed.
 export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) {
-  const { years = 3 } = opts;
+  const { years = 3, splitDate = null } = opts;
   const days = Math.round(years * 365) + WARMUP_DAYS;
   const all = [];
   const perSymbol = [];
@@ -216,15 +216,25 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
   for (const r of results) {
     if (r.error) { errors.push({ symbol: r.symbol, error: r.error }); continue; }
     all.push(...r.trades);
-    perSymbol.push({ key: r.symbol, ...summarise(r.trades), curve: undefined, noFills: r.noFills });
   }
 
-  const overall = summarise(all);
+  // Split the record in two. Everything the caller develops against comes from
+  // the in-sample side; the out-of-sample side is only evidence for as long as
+  // it stays unlooked-at, so the route decides whether to hand it over.
+  const inSample = splitDate ? all.filter((t) => t.entryDate < splitDate) : all;
+  const oosTrades = splitDate ? all.filter((t) => t.entryDate >= splitDate) : [];
+
+  const overall = summarise(inSample);
+  for (const r of results) {
+    if (r.error) continue;
+    const mine = inSample.filter((t) => t.symbol === r.symbol);
+    perSymbol.push({ key: r.symbol, ...summarise(mine), curve: undefined, noFills: r.noFills });
+  }
 
   // The regime split directly tests SYSTEM.md rule 2 — "only buy in a
   // golden-cross regime". If the death-cross bucket is no worse, the filter is
   // costing trades without buying safety, and the rule should change.
-  const byRegime = segment(all, (t) => t.regime);
+  const byRegime = segment(inSample, (t) => t.regime);
   const golden = byRegime.find((b) => b.key === 'golden');
   const death = byRegime.find((b) => b.key === 'death');
   const filterVerdict = golden && death && golden.scored >= 5 && death.scored >= 5
@@ -233,17 +243,59 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
     : null;
 
   return {
-    params: { symbols, years, ...opts },
+    params: { symbols, years, splitDate, ...opts },
+    splitDate,
     overall,
     bySymbol: perSymbol.sort((a, b) => (b.totalR ?? -999) - (a.totalR ?? -999)),
     byRegime,
-    byYear: segment(all, (t) => t.year),
-    byOutcome: segment(all, (t) => t.outcome),
+    byYear: segment(inSample, (t) => t.year),
+    byOutcome: segment(inSample, (t) => t.outcome),
     filterVerdict,
-    rDistribution: bucketR(all),
-    trades: all.sort((a, b) => (a.entryDate < b.entryDate ? -1 : 1)),
+    rDistribution: bucketR(inSample),
+    rolling: rollingWindows(inSample),
+    trades: inSample.sort((a, b) => (a.entryDate < b.entryDate ? -1 : 1)),
+    // How much held-out evidence exists. The COUNT is always safe to show —
+    // it reveals nothing about the outcomes.
+    oosPending: oosTrades.length,
+    oos: splitDate ? {
+      summary: summarise(oosTrades),
+      rDistribution: bucketR(oosTrades),
+      bySymbol: segment(oosTrades, (t) => t.symbol),
+      trades: oosTrades.sort((a, b) => (a.entryDate < b.entryDate ? -1 : 1)),
+      from: splitDate,
+    } : null,
     errors,
   };
+}
+
+// Performance across rolling windows of the development period. The system has
+// no fitted parameters, so this is not walk-forward optimisation — it answers a
+// simpler and more useful question: was the edge steady, or did it all arrive
+// in one stretch? A result that only worked in 2022 is a fact about 2022.
+function rollingWindows(trades, { windowMonths = 12, stepMonths = 3 } = {}) {
+  const scored = trades.filter((t) => t.rMultiple != null)
+    .sort((a, b) => (a.entryDate < b.entryDate ? -1 : 1));
+  if (scored.length < 10) return [];
+  const first = new Date(scored[0].entryDate + 'T00:00:00Z');
+  const last = new Date(scored[scored.length - 1].entryDate + 'T00:00:00Z');
+  const out = [];
+  const cursor = new Date(first);
+  while (true) {
+    const end = new Date(cursor);
+    end.setUTCMonth(end.getUTCMonth() + windowMonths);
+    const a = cursor.toISOString().slice(0, 10);
+    const b = end.toISOString().slice(0, 10);
+    const inWin = scored.filter((t) => t.entryDate >= a && t.entryDate < b);
+    if (inWin.length >= 5) {
+      const sm = summarise(inWin);
+      out.push({ start: a, end: b, trades: sm.scored, avgR: sm.avgR, winRate: sm.winRate,
+                 totalR: sm.totalR });
+    }
+    if (end >= last) break;
+    cursor.setUTCMonth(cursor.getUTCMonth() + stepMonths);
+    if (out.length > 60) break; // guard
+  }
+  return out;
 }
 
 // Histogram of results in R. The shape is the point: most systems that work

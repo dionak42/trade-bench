@@ -701,3 +701,7 @@ body {
   .view-toggle { display: flex; max-width: 100%; overflow-x: auto; }
   .view-toggle button { padding: 8px 12px; font-size: 13px; white-space: nowrap; }
 }
+
+.holdout-card { border-left: 3px solid var(--accent); }
+.holdout-card .primary-btn { margin-top: 12px; }
+.holdout-card p { font-size: 13.5px; line-height: 1.6; margin: 0 0 8px; }

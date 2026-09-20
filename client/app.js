@@ -1570,6 +1570,7 @@ function renderBacktestControls() {
       ${field('bt-account', 'Account size ($)', state.settings.accountSize || 60000, 'Only affects share counts and dollar P&L. Results in R are unaffected by it.')}
       ${field('bt-risk', 'Risk per trade (%)', state.settings.riskPct || 0.5, "Your system's sizing rule.")}
       ${field('bt-wait', 'Days to leave an order resting', state.backtestWait || 20, 'How long a buy order waits before the level it was based on is stale and gets re-derived. A rule the plan builder never made you state — the backtest forces the question.')}
+      ${field('bt-holdout', 'Months held back (out-of-sample)', state.backtestHoldout ?? 12, 'The most recent N months are locked away and excluded from everything shown. You develop on the older data; the held-back slice is the only honest test of whether the rules work on prices you never studied. Set to 0 to disable — but then nothing here can tell you the system works.')}
     </div>
     <button class="primary-btn" id="bt-run" type="button">🧪 Run the system over history</button>
     <p class="hint">Fetches price history for each symbol, so a long list takes a few seconds.
@@ -1580,16 +1581,20 @@ function renderBacktestControls() {
       b.classList.add('active');
       state.backtestStyle = b.dataset.style;
     }));
-  $('#bt-run').addEventListener('click', runBacktestUI);
+  // Wrapped, not passed directly: a bare listener would hand the click Event
+  // in as `reveal`, which is truthy — silently unsealing the held-out period
+  // on every ordinary run.
+  $('#bt-run').addEventListener('click', () => runBacktestUI(false));
 }
 
-async function runBacktestUI() {
+async function runBacktestUI(reveal = false) {
   const out = $('#backtest-result');
   const symbols = $('#bt-symbols').value.trim();
   if (!symbols) { window.alert('Add at least one symbol.'); return; }
   state.backtestSymbols = symbols;
   state.backtestYears = val('bt-years');
   state.backtestWait = val('bt-wait');
+  state.backtestHoldout = val('bt-holdout');
   const btn = $('#bt-run');
   btn.disabled = true;
   btn.textContent = 'Running…';
@@ -1605,7 +1610,9 @@ async function runBacktestUI() {
         accountSize: val('bt-account'),
         riskPct: val('bt-risk'),
         maxWaitBars: val('bt-wait'),
+        holdoutMonths: val('bt-holdout'),
         entryStyle: state.backtestStyle || 'pullback',
+        reveal,
       }),
     });
     state.backtestResult = r;
@@ -1635,7 +1642,9 @@ function renderBacktestResult(r) {
   const expCls = o.avgR > 0 ? 'good' : 'bad';
   $('#backtest-result').innerHTML = `
     <div class="scorecard">
-      ${scoreCard('Trades', o.scored, `${o.wins}W / ${o.losses}L · ${r.params.symbols.length} symbols · ${r.params.years}y`)}
+      ${scoreCard('Trades', o.scored,
+        `${o.wins}W / ${o.losses}L · ${r.params.symbols.length} symbols` +
+        (r.splitDate ? ` · development data only, to ${r.splitDate}` : ` · ${r.params.years}y`))}
       ${scoreCard('Win rate', pct(o.winRate, 0), 'How often it was right')}
       ${scoreCard('Expectancy', rTxt(o.avgR), `Per trade · ${rTxt(o.totalR)} total`, expCls)}
       ${scoreCard('Profit factor', o.profitFactor != null ? o.profitFactor.toFixed(2) : '—',
@@ -1647,6 +1656,15 @@ function renderBacktestResult(r) {
         `${o.losses} losses total · ${o.avgDaysHeld}d average hold`)}
     </div>
     ${verdictBox(r)}
+    ${holdoutPanel(r)}
+    ${variantWarning(r)}
+    ${r.rolling && r.rolling.length > 1 ? `
+      <section class="card">
+        <div class="card-head"><h2>Was the edge steady?</h2>
+          <span class="not-advice" data-tip="Each bar is a 12-month window of the development period, stepped 3 months. Similar heights mean a consistent edge; one tall bar means one good year.">Stability</span>
+        </div>
+        <div id="bt-stability" class="chart-box"></div>
+      </section>` : ''}
     <section class="card">
       <div class="card-head"><h2>Equity curve (in R)</h2>
         <span class="not-advice" data-tip="Cumulative R across the sequence, oldest trade first. Shaded band marks the deepest drawdown.">Shape &gt; total</span>
@@ -1681,9 +1699,147 @@ function renderBacktestResult(r) {
   if (window.charts) {
     window.charts.equityCurve($('#bt-equity'), o.curve);
     window.charts.rHistogram($('#bt-hist'), r.rDistribution);
+    const stab = $('#bt-stability');
+    if (stab) window.charts.stabilityChart(stab, r.rolling);
+    const oosHist = $('#bt-oos-hist');
+    if (oosHist && r.oos) window.charts.rHistogram(oosHist, r.oos.rDistribution);
   }
+  const revealBtn = $('#bt-reveal');
+  if (revealBtn) revealBtn.addEventListener('click', confirmReveal);
   const logAll = $('#bt-log-all');
   if (logAll) logAll.addEventListener('click', () => logAllBacktestTrades(r));
+}
+
+// The held-out period, locked. Everything above this panel was computed from
+// development data only; this is the part that hasn't been looked at.
+function holdoutPanel(r) {
+  if (!r.splitDate) {
+    return `
+      <div class="journal-insight warn-box">
+        <strong>⚠️ No data held back.</strong> Every trade above was used to produce the number
+        above it, so adjusting the rules and re-running will keep improving that number whether
+        or not the system is any good. Set <em>Months held back</em> to 12 and run again if you
+        want an answer you can trust.
+      </div>`;
+  }
+  const reveals = r.reveals?.count ?? 0;
+  const pending = r.oosPending ?? 0;
+
+  if (!r.revealed || !r.oos) {
+    const thin = pending < 20;
+    return `
+      <section class="card holdout-card">
+        <div class="card-head"><h2>🔒 Held-out period</h2>
+          <span class="not-advice" data-tip="These trades exist and have been simulated. Their results are on the server and have deliberately not been sent to your browser.">Sealed</span>
+        </div>
+        <p><strong>${pending} trades</strong> from <strong>${esc(r.splitDate)}</strong> to today
+        are waiting, and none of them contributed to anything above.</p>
+        <p class="hint">Finish your thinking on the development data first — decide the rules,
+        and write down what you expect this period to do. Then look, once. The moment you see
+        it, it stops being evidence and becomes more development data, because you can't
+        un-know it.</p>
+        ${thin ? `<div class="calc-warning">⚠️ Only ${pending} trades in the held-out window —
+          a thin test. More symbols or a longer holdout would make the answer firmer.</div>` : ''}
+        ${reveals > 0 ? `<div class="calc-warning">You have already unsealed a held-out period
+          ${reveals} time${reveals === 1 ? '' : 's'}. Each look spends some of the evidence.</div>` : ''}
+        <button class="primary-btn" id="bt-reveal" type="button">🔓 Unseal the held-out period</button>
+      </section>`;
+  }
+
+  // Revealed.
+  const is = r.overall, oos = r.oos.summary;
+  if (!oos.scored) {
+    return `<section class="card holdout-card">
+      <div class="card-head"><h2>🔓 Held-out period</h2></div>
+      <div class="event-none">No trades fired in the held-out window, so it can't test anything.
+      Try a longer holdout or more symbols.</div></section>`;
+  }
+
+  // Did it survive? Compare like with like, and be strict: an edge that halves
+  // out of sample was probably half luck to begin with.
+  const held = oos.avgR > 0.05 && is.avgR > 0 && oos.avgR >= is.avgR * 0.5;
+  const partial = !held && oos.avgR > 0.05;
+  const verdictCls = held ? 'good-box' : 'warn-box';
+  const verdict = held
+    ? `✅ <strong>It held up.</strong> The rules made ${rTxt(oos.avgR)} per trade on prices you
+       never studied, against ${rTxt(is.avgR)} in development. That is the closest thing to real
+       evidence this tool can give you.`
+    : partial
+      ? `🤔 <strong>It faded.</strong> ${rTxt(is.avgR)} in development became ${rTxt(oos.avgR)}
+         out of sample — still positive, but a good part of the development edge was specific to
+         that stretch of history. Size accordingly, and don't trust the bigger number.`
+      : `❌ <strong>It did not survive.</strong> ${rTxt(is.avgR)} in development became
+         ${rTxt(oos.avgR)} on data you hadn't seen. The development result was a description of
+         the past, not a system. That is a genuinely useful thing to find out for free.`;
+
+  const cmp = (label, a, b, fmt) => `
+    <tr><td>${label}</td><td>${fmt(a)}</td><td>${fmt(b)}</td></tr>`;
+  const rf = (v) => (v == null ? '—' : rTxt(v));
+  const pf = (v) => (v == null ? '—' : pct(v, 0));
+
+  return `
+    <section class="card holdout-card">
+      <div class="card-head"><h2>🔓 Held-out period · ${esc(r.oos.from)} to today</h2>
+        <span class="not-advice" data-tip="These trades were simulated on data excluded from everything you used to develop the rules.">Out of sample</span>
+      </div>
+      <div class="journal-insight ${verdictCls}" style="margin-top:0">${verdict}
+        ${oos.scored < 20 ? `<br><br><strong>Caveat:</strong> only ${oos.scored} trades out of
+          sample. Treat this as a smell test, not a verdict — one more symbol either way could
+          flip it.` : ''}
+        ${reveals > 1 ? `<br><br><strong>⚠️ Look #${reveals}.</strong> This window has been
+          unsealed before. If you changed the rules in between, it is no longer an out-of-sample
+          test — it has quietly become part of your development data.` : ''}
+      </div>
+      <div class="chain-scroll"><table class="chain-table paper-table">
+        <thead><tr><th></th><th>Development</th><th>Held out</th></tr></thead>
+        <tbody>
+          ${cmp('Trades', is.scored, oos.scored, (v) => v)}
+          ${cmp('Win rate', is.winRate, oos.winRate, pf)}
+          ${cmp('Expectancy', is.avgR, oos.avgR, rf)}
+          ${cmp('Average win', is.avgWinR, oos.avgWinR, rf)}
+          ${cmp('Average loss', is.avgLossR, oos.avgLossR, rf)}
+          ${cmp('Profit factor', is.profitFactor, oos.profitFactor, (v) => (v == null ? '—' : v.toFixed(2)))}
+          ${cmp('Worst drawdown', is.maxDrawdownR, oos.maxDrawdownR, (v) => (v == null ? '—' : '−' + v + 'R'))}
+          ${cmp('Worst losing streak', is.worstLossStreak, oos.worstLossStreak, (v) => v)}
+        </tbody>
+      </table></div>
+      <div id="bt-oos-hist" class="chart-box"></div>
+      <p class="hint">From here on, this window is spent. If you change the rules and want another
+      honest test, you need data that neither you nor the rules have seen — which in practice
+      means waiting for more of it to happen.</p>
+    </section>`;
+}
+
+// How many different rule configurations have been tried. Try enough of them
+// and one will look good by chance alone; the count is the context that makes
+// a flattering in-sample number readable.
+function variantWarning(r) {
+  const n = r.variants?.variants ?? 0;
+  if (n < 4) return '';
+  const severe = n >= 8;
+  return `
+    <div class="journal-insight ${severe ? 'warn-box' : ''}" ${severe ? '' : 'style="background:var(--surface-alt)"'}>
+      <strong>${severe ? '⚠️ ' : ''}${n} rule configurations tried so far${severe ? '.' : '.'}</strong>
+      ${severe
+        ? `At that many attempts you should <em>expect</em> one of them to look good on the
+           development data by luck alone, even if none of them has an edge. Picking the
+           best-scoring variant is how a backtest gets turned into a story. Whatever you settle
+           on, the held-out period below is the only thing that can tell you which it was.`
+        : `Worth tracking: the more variants you try, the more the best-scoring one owes to
+           luck rather than skill. Settle on rules for a reason, not because they topped a
+           leaderboard.`}
+    </div>`;
+}
+
+async function confirmReveal() {
+  const ok = window.confirm(
+    'Unseal the held-out period?\n\n' +
+    'This is meant to happen once, after you have settled the rules. Looking at it now ' +
+    'means you cannot use it as an unbiased test of anything you change afterwards.\n\n' +
+    'Have you finished deciding, and written down what you expect?'
+  );
+  if (!ok) return;
+  await runBacktestUI(true);
 }
 
 // The headline verdict: does the system pay, and does the regime filter earn its keep?
@@ -1716,9 +1872,10 @@ function verdictBox(r) {
       Add symbols or years if you want to test rule 2.</li>`;
   }
 
-  const headline = marginal ? '➖ Too close to call — this is break-even.'
-    : works ? '📈 Positive expectancy over this sample.'
-    : '📉 This did not pay over this sample.';
+  const dev = r.splitDate ? ' on the development data' : ' over this sample';
+  const headline = marginal ? `➖ Too close to call${dev} — this is break-even.`
+    : works ? `📈 Positive expectancy${dev}.`
+    : `📉 This did not pay${dev}.`;
   let body;
   if (marginal) {
     body = `That is a rounding error, not an edge. This backtest charges no commission and
@@ -1744,6 +1901,9 @@ function verdictBox(r) {
         <li>You would have had to sit through a <strong>−${o.maxDrawdownR}R</strong> drawdown and
         <strong>${o.worstLossStreak} losses in a row</strong>. That is the number that decides
         whether you would still be running this system when it started working again.</li>
+        ${r.splitDate ? `<li><strong>None of this is evidence yet.</strong> These are the trades
+          you developed the rules against, so a good number here is partly a description of how
+          well you fitted them. The held-out period below is the only part that can test it.</li>` : ''}
       </ul>
     </div>`;
 }

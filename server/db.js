@@ -89,6 +89,37 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_trades_status ON trades (status);
   CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades (symbol);
+
+  -- Every distinct rule configuration ever tested in-sample.
+  --
+  -- This table exists to make a quiet form of self-deception visible. Try one
+  -- set of rules and a good score is evidence. Try twenty and pick the best,
+  -- and the winner is mostly luck — with twenty attempts you should EXPECT a
+  -- flattering result even from rules with no edge at all. Nobody remembers
+  -- how many variants they tried, so the count is kept for you.
+  CREATE TABLE IF NOT EXISTS tested_variants (
+    signature       TEXT PRIMARY KEY,   -- canonical JSON of the rule params
+    first_tested    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_tested     TEXT NOT NULL DEFAULT (datetime('now')),
+    times_run       INTEGER NOT NULL DEFAULT 1,
+    in_sample_avg_r REAL
+  );
+
+  -- Each time the held-out period is looked at.
+  --
+  -- Out-of-sample data is only evidence while it is unseen. The first look is
+  -- a test; every look after that is just more development data wearing a
+  -- disguise, because you cannot un-know what you saw. The log is the honest
+  -- record of how much of that evidence is left.
+  CREATE TABLE IF NOT EXISTS oos_reveals (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    revealed_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    split_date   TEXT,
+    signature    TEXT,
+    oos_trades   INTEGER,
+    oos_avg_r    REAL,
+    in_sample_avg_r REAL
+  );
 `);
 
 export function getSetting(key) {
@@ -294,6 +325,68 @@ export function tradeStats() {
     followedCount: followed.length,
     brokeCount: broke.length,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Backtest discipline: what has been tried, and what has been peeked at
+// ---------------------------------------------------------------------------
+
+// A stable identity for one rule configuration. Symbol choice is part of it:
+// cherry-picking which names to include is as much a fitting decision as
+// changing the stop.
+export function variantSignature(params = {}) {
+  return JSON.stringify({
+    symbols: [...(params.symbols || [])].map((x) => String(x).toUpperCase()).sort(),
+    entryStyle: params.entryStyle ?? 'pullback',
+    stopAtrMult: Number(params.stopAtrMult ?? 2),
+    maxWaitBars: Number(params.maxWaitBars ?? 20),
+    years: Number(params.years ?? 3),
+    splitDate: params.splitDate ?? null,
+  });
+}
+
+export function recordVariant(signature, inSampleAvgR) {
+  db.prepare(
+    `INSERT INTO tested_variants (signature, in_sample_avg_r) VALUES (?, ?)
+     ON CONFLICT(signature) DO UPDATE SET
+       times_run = times_run + 1,
+       last_tested = datetime('now'),
+       in_sample_avg_r = excluded.in_sample_avg_r`
+  ).run(signature, inSampleAvgR == null ? null : Number(inSampleAvgR));
+  return variantStats();
+}
+
+export function variantStats() {
+  const row = db.prepare(
+    'SELECT COUNT(*) AS variants, COALESCE(SUM(times_run), 0) AS runs FROM tested_variants'
+  ).get();
+  const best = db.prepare(
+    `SELECT signature, in_sample_avg_r FROM tested_variants
+     WHERE in_sample_avg_r IS NOT NULL ORDER BY in_sample_avg_r DESC LIMIT 1`
+  ).get();
+  return { variants: row.variants, runs: row.runs, best: best || null };
+}
+
+export function recordOosReveal(entry) {
+  db.prepare(
+    `INSERT INTO oos_reveals (split_date, signature, oos_trades, oos_avg_r, in_sample_avg_r)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(
+    entry.splitDate ?? null,
+    entry.signature ?? null,
+    entry.oosTrades == null ? null : Number(entry.oosTrades),
+    entry.oosAvgR == null ? null : Number(entry.oosAvgR),
+    entry.inSampleAvgR == null ? null : Number(entry.inSampleAvgR)
+  );
+  return oosRevealStats();
+}
+
+export function oosRevealStats() {
+  const row = db.prepare('SELECT COUNT(*) AS count, MIN(revealed_at) AS first FROM oos_reveals').get();
+  const recent = db.prepare(
+    'SELECT revealed_at, split_date, oos_trades, oos_avg_r, in_sample_avg_r FROM oos_reveals ORDER BY id DESC LIMIT 10'
+  ).all();
+  return { count: row.count, first: row.first, recent };
 }
 
 export default db;
