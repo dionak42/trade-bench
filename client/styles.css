@@ -627,3 +627,57 @@ body {
 .chain-table tbody tr.target-best { box-shadow: inset 3px 0 0 var(--good); }
 .chain-table tbody tr.target-best.selected { box-shadow: inset 3px 0 0 var(--good); }
 .chain-table .star { color: var(--good); cursor: help; font-size: 12px; }
+
+/* ---------- Trade journal ---------- */
+.journal-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.journal-filters select {
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-size: 13px; font-family: var(--font);
+}
+
+.good-box { background: var(--good-soft); color: var(--good); border-color: transparent; }
+.warn-box { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+
+.journal-insight {
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px;
+  font-size: 13px; line-height: 1.55;
+}
+
+.journal-card {
+  border: 1px solid var(--border); border-left: 3px solid var(--border);
+  border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px;
+  background: var(--surface-alt);
+}
+.journal-card.broke { border-left-color: var(--warn); }
+.journal-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.journal-head > div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.journal-sym { font-size: 15px; letter-spacing: 0.3px; }
+.journal-date { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.journal-plan { font-size: 13px; margin-top: 6px; font-family: var(--mono); }
+.journal-thesis { font-size: 13px; color: var(--muted); margin-top: 6px; font-style: italic; }
+.journal-lesson { font-size: 13px; margin-top: 6px; }
+.journal-outcome {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  margin-top: 8px; font-size: 13px;
+}
+.journal-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+.journal-review {
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+}
+.journal-review .calc-inputs { margin-bottom: 10px; }
+.journal-review .field { margin-bottom: 10px; }
+.journal-review .rules-toggle { width: fit-content; }
+
+/* Selects and textareas match the existing .field input styling. */
+.field select, .field textarea {
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text); font-size: 14px;
+  font-family: var(--font); width: 100%; box-sizing: border-box;
+}
+.field textarea { resize: vertical; line-height: 1.5; }
+.field select:focus, .field textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+
+.plan-thesis-field { margin-top: 12px; }
+.plan-buttons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.plan-buttons .place-btn { margin-top: 0; }

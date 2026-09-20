@@ -1,5 +1,6 @@
 // SQLite setup using Node's built-in node:sqlite (no native build step).
-// Stores the shared watchlist — both users see the same rows.
+// Stores the shared watchlist, the IV history, settings, and the trade
+// journal — both users see the same rows.
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -34,6 +35,60 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+
+  -- The trade journal: one row per DECISION, not per fill. A row is written
+  -- the moment a plan is committed to (planned), updated when it fills (open),
+  -- and reviewed once it's done (closed). The review columns are the point of
+  -- the whole table — outcome tells you what happened, followed_rules tells
+  -- you whether you actually ran your system, and only the two together turn
+  -- reps into a lesson.
+  CREATE TABLE IF NOT EXISTS trades (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol         TEXT NOT NULL,
+    kind           TEXT DEFAULT 'stock',    -- stock | covered_call | csp
+    source         TEXT DEFAULT 'paper',    -- paper | replay | live
+    status         TEXT DEFAULT 'planned',  -- planned | open | closed
+    entry_style    TEXT DEFAULT '',         -- pullback | breakout
+
+    -- The plan, as committed to up front. Never edited after the fact —
+    -- comparing it to what happened is the review.
+    entry          REAL,
+    target         REAL,
+    stop           REAL,
+    shares         INTEGER,
+    risk_per_share REAL,
+    planned_risk   REAL,                    -- dollars at risk if stopped (1R)
+    reward_risk    REAL,                    -- planned reward-to-risk ratio
+    thesis         TEXT DEFAULT '',         -- why you took it, in your words
+
+    -- What the scorecard showed when you decided. Lets a later review ask
+    -- "what was I looking at?" instead of guessing.
+    ctx_price      REAL,
+    ctx_trend      TEXT,
+    ctx_regime     TEXT,
+    ctx_rsi        REAL,
+
+    order_id       TEXT DEFAULT '',         -- Alpaca order id, when placed
+
+    -- What actually happened.
+    entry_price    REAL,
+    exit_price     REAL,
+    entry_date     TEXT,
+    exit_date      TEXT,
+    outcome        TEXT,                    -- target | stopped | manual | no_fill
+    pnl            REAL,
+    r_multiple     REAL,                    -- P&L in multiples of planned risk
+
+    -- The review.
+    followed_rules INTEGER,                 -- 1 yes, 0 no, NULL not reviewed yet
+    lesson         TEXT DEFAULT '',
+
+    planned_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_trades_status ON trades (status);
+  CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades (symbol);
 `);
 
 export function getSetting(key) {
@@ -76,6 +131,169 @@ export function getIvHistory(symbol) {
   return db
     .prepare('SELECT date, iv FROM iv_snapshots WHERE symbol = ? ORDER BY date ASC')
     .all(symbol.toUpperCase());
+}
+
+// ---------------------------------------------------------------------------
+// Trade journal
+// ---------------------------------------------------------------------------
+
+// Column -> coercion. node:sqlite only binds null/number/string, so every
+// value crossing the boundary goes through here; it also keeps the writable
+// surface to an allowlist, so a client can't set `id` or `planned_at`.
+const TRADE_FIELDS = {
+  symbol: 'upper', kind: 'text', source: 'text', status: 'text', entry_style: 'text',
+  entry: 'num', target: 'num', stop: 'num', shares: 'int',
+  risk_per_share: 'num', planned_risk: 'num', reward_risk: 'num', thesis: 'text',
+  ctx_price: 'num', ctx_trend: 'text', ctx_regime: 'text', ctx_rsi: 'num',
+  order_id: 'text',
+  entry_price: 'num', exit_price: 'num', entry_date: 'text', exit_date: 'text',
+  outcome: 'text', pnl: 'num', r_multiple: 'num',
+  followed_rules: 'bool', lesson: 'text',
+};
+
+function coerce(kind, v) {
+  if (v === undefined || v === null || v === '') {
+    return kind === 'text' || kind === 'upper' ? '' : null;
+  }
+  switch (kind) {
+    case 'upper': return String(v).toUpperCase().trim();
+    case 'text': return String(v);
+    case 'int': { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; }
+    case 'bool': return v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0;
+    default: { const n = Number(v); return Number.isFinite(n) ? n : null; }
+  }
+}
+
+// Pick out the writable fields a caller actually supplied.
+function pickTradeFields(input) {
+  const out = {};
+  for (const [col, kind] of Object.entries(TRADE_FIELDS)) {
+    if (Object.prototype.hasOwnProperty.call(input, col)) out[col] = coerce(kind, input[col]);
+  }
+  return out;
+}
+
+// P&L and R are derived, never trusted from the client — a journal whose
+// numbers drift from its own plan teaches the wrong lesson. R is the honest
+// scorekeeper: it measures the result against the risk you *chose* to take,
+// so a $200 win on a $100 risk and a $2,000 win on a $1,000 risk both read
+// +2R, and position size stops flattering (or hiding) your judgment.
+function deriveOutcome(row) {
+  if (row.kind !== 'stock') return {};
+  const { entry_price: e, exit_price: x, shares, risk_per_share: rps } = row;
+  if (e == null || x == null) return {};
+  const out = { pnl: Number(((x - e) * (shares || 0)).toFixed(2)) };
+  if (rps != null && rps > 0) out.r_multiple = Number(((x - e) / rps).toFixed(3));
+  return out;
+}
+
+function applyDerived(id) {
+  const row = getTrade(id);
+  if (!row) return null;
+  const d = deriveOutcome(row);
+  const cols = Object.keys(d);
+  if (cols.length) {
+    db.prepare(`UPDATE trades SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`)
+      .run(...cols.map((c) => d[c]), id);
+    return getTrade(id);
+  }
+  return row;
+}
+
+export function getTrade(id) {
+  return db.prepare('SELECT * FROM trades WHERE id = ?').get(Number(id)) || null;
+}
+
+export function listTrades({ status, symbol, source, limit = 200 } = {}) {
+  const where = [];
+  const args = [];
+  if (status) { where.push('status = ?'); args.push(String(status)); }
+  if (symbol) { where.push('symbol = ?'); args.push(String(symbol).toUpperCase()); }
+  if (source) { where.push('source = ?'); args.push(String(source)); }
+  const sql = `SELECT * FROM trades
+               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+               ORDER BY planned_at DESC, id DESC LIMIT ?`;
+  return db.prepare(sql).all(...args, Math.min(Number(limit) || 200, 1000));
+}
+
+export function createTrade(input = {}) {
+  const fields = pickTradeFields(input);
+  if (!fields.symbol) throw new Error('symbol is required');
+  const cols = Object.keys(fields);
+  const info = db
+    .prepare(`INSERT INTO trades (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
+    .run(...cols.map((c) => fields[c]));
+  return applyDerived(info.lastInsertRowid);
+}
+
+export function updateTrade(id, input = {}) {
+  const fields = pickTradeFields(input);
+  const cols = Object.keys(fields);
+  if (!cols.length) return getTrade(id);
+  db.prepare(`UPDATE trades SET ${cols.map((c) => `${c} = ?`).join(', ')},
+              updated_at = datetime('now') WHERE id = ?`)
+    .run(...cols.map((c) => fields[c]), Number(id));
+  // An explicit pnl/R in the patch wins (options trades, manual corrections);
+  // otherwise the stock math is re-derived from the plan.
+  if (fields.pnl != null || fields.r_multiple != null) return getTrade(id);
+  return applyDerived(id);
+}
+
+export function deleteTrade(id) {
+  return db.prepare('DELETE FROM trades WHERE id = ?').run(Number(id));
+}
+
+// The scoreboard. Win rate is the number people watch; expectancy (average R)
+// is the one that decides whether the system makes money, and the
+// followed/broke split is the one that changes behaviour.
+export function tradeStats() {
+  const all = db.prepare('SELECT * FROM trades').all();
+  const closed = all.filter((t) => t.status === 'closed');
+  const scored = closed.filter((t) => t.r_multiple != null); // no-fills don't count
+  const wins = scored.filter((t) => t.r_multiple > 0);
+  const losses = scored.filter((t) => t.r_multiple <= 0);
+  const avg = (rows) =>
+    rows.length ? Number((rows.reduce((a, t) => a + t.r_multiple, 0) / rows.length).toFixed(2)) : null;
+
+  // Longest run of consecutive losses, oldest first — the number that tells
+  // you what a normal bad patch looks like before you live through one.
+  const chron = [...scored].sort((a, b) => (a.planned_at < b.planned_at ? -1 : 1));
+  let worstStreak = 0;
+  let run = 0;
+  for (const t of chron) {
+    if (t.r_multiple <= 0) { run++; worstStreak = Math.max(worstStreak, run); }
+    else run = 0;
+  }
+
+  const reviewed = closed.filter((t) => t.followed_rules != null);
+  const followed = reviewed.filter((t) => t.followed_rules === 1);
+  const broke = reviewed.filter((t) => t.followed_rules === 0);
+
+  return {
+    total: all.length,
+    planned: all.filter((t) => t.status === 'planned').length,
+    open: all.filter((t) => t.status === 'open').length,
+    closed: closed.length,
+    scored: scored.length,
+    wins: wins.length,
+    losses: losses.length,
+    winRate: scored.length ? wins.length / scored.length : null,
+    avgR: avg(scored),
+    avgWinR: avg(wins),
+    avgLossR: avg(losses),
+    totalR: scored.length ? Number(scored.reduce((a, t) => a + t.r_multiple, 0).toFixed(2)) : null,
+    totalPnl: closed.length
+      ? Number(closed.reduce((a, t) => a + (t.pnl || 0), 0).toFixed(2))
+      : null,
+    worstLossStreak: worstStreak,
+    reviewed: reviewed.length,
+    disciplineRate: reviewed.length ? followed.length / reviewed.length : null,
+    // The comparison the whole journal exists to produce.
+    avgRFollowed: avg(followed.filter((t) => t.r_multiple != null)),
+    avgRBroke: avg(broke.filter((t) => t.r_multiple != null)),
+    followedCount: followed.length,
+    brokeCount: broke.length,
+  };
 }
 
 export default db;

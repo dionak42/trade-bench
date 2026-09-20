@@ -15,6 +15,11 @@ const state = {
   view: 'analysis',  // 'analysis' (Research) | 'planner' (Options) | 'paper'
   analysis: null,    // cached scorecard for the loaded symbol
   sizingMode: 'risk', // 'risk' | 'capital'
+  journalStatus: '',  // journal filters
+  journalSymbol: '',
+  journalTrades: [],
+  journalOpen: new Set(), // ids of expanded review forms
+  planThesis: '',    // survives plan-builder re-renders
   entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
 };
@@ -826,6 +831,10 @@ function renderPlanBuilder(a) {
       ${field('plan-stop', 'Trailing stop %', stopPct, 'How far below the peak the runner can fall before it sells. Defaults to ~2× the average daily move.')}
       ${sizingInputs}
     </div>
+    <div class="field plan-thesis-field">
+      <label><span class="q" data-tip="Why this trade, in your own words — the setup you think you're taking. Writing it before the outcome is known is what makes the later review honest: you can't quietly rewrite the reason once you know how it ended.">Why this trade? (goes in the journal)</span></label>
+      <textarea id="plan-thesis" rows="2" placeholder="e.g. pullback to 20-day support, still in a golden-cross regime, RSI turning up"></textarea>
+    </div>
     <div id="plan-out"></div>`;
 
   $('#entry-style-toggle').querySelectorAll('button').forEach((b) =>
@@ -834,6 +843,9 @@ function renderPlanBuilder(a) {
     b.addEventListener('click', () => { state.sizingMode = b.dataset.mode; renderPlanBuilder(a); }));
   $('#plan-builder').querySelectorAll('input').forEach((inp) =>
     inp.addEventListener('input', computePlan));
+  const thesisEl = $('#plan-thesis');
+  thesisEl.value = state.planThesis || '';
+  thesisEl.addEventListener('input', () => { state.planThesis = thesisEl.value; });
   computePlan();
   drawPriceChart();
 }
@@ -909,8 +921,14 @@ function computePlan() {
       ${breakout ? '' : `<br><span style="color:var(--muted)">Prefer to get <em>paid</em> to buy near ${money(entry)}? Switch to the Options tab and sell a cash-secured put around that strike.</span>`}
     </div>
     ${shares >= 1 && rr != null && state.symbol ? `
-      <button class="primary-btn place-btn" id="plan-place">📈 Place as paper bracket order</button>
-      <div class="place-note">${breakout ? 'Buy-stop' : 'Buy-limit'} ${shares} ${state.symbol}, take-profit ${money(target)}, stop ${money(stopPrice)}. Simulated — no real money.</div>` : ''}`;
+      <div class="plan-buttons">
+        <button class="primary-btn place-btn" id="plan-place">📈 Place as paper bracket order</button>
+        <button class="ghost-btn" id="plan-log" type="button" data-tip="Records the plan without placing anything — for a setup you've decided to pass on, or one you want to watch. Logging the trades you skip is half the lesson.">📓 Log to journal only</button>
+      </div>
+      <div class="place-note">${breakout ? 'Buy-stop' : 'Buy-limit'} ${shares} ${state.symbol}, take-profit ${money(target)}, stop ${money(stopPrice)}. Simulated — no real money. Placing it also writes the plan to your journal.</div>` : ''}`;
+  const plan = { entry: round2(entry), target: round2(target), stopPrice: round2(stopPrice),
+                 shares, riskPS: round2(riskPS), dollarRisk: round2(dollarRisk),
+                 rr: rr != null ? round2(rr) : null };
   const btn = document.getElementById('plan-place');
   if (btn) {
     const entryOrder = breakout
@@ -921,8 +939,11 @@ function computePlan() {
       time_in_force: 'gtc', order_class: 'bracket',
       take_profit: { limit_price: round2(target) },
       stop_loss: { stop_price: round2(stopPrice) },
-    }, `Place a paper BRACKET order (${breakout ? 'buy-stop breakout' : 'buy-limit pullback'}):\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\nMax loss: ${money(dollarRisk)}\n\nProceed? (simulated, no real money)`));
+    }, `Place a paper BRACKET order (${breakout ? 'buy-stop breakout' : 'buy-limit pullback'}):\n\nBuy ${shares} ${state.symbol} at ${money(entry)}\nTake-profit: ${money(target)}\nStop: ${money(stopPrice)}\nMax loss: ${money(dollarRisk)}\n\nProceed? (simulated, no real money)`,
+      planPayload(plan)));
   }
+  const logBtn = document.getElementById('plan-log');
+  if (logBtn) logBtn.addEventListener('click', () => logTrade(planPayload(plan)));
   drawPriceChart();
 }
 
@@ -969,8 +990,12 @@ async function runReplayUI() {
 function renderReplayResult(r) {
   const out = $('#replay-result');
   const levelsLine = `<div class="replay-levels">${r.style === 'breakout' ? 'Breakout' : 'Pullback'} plan <strong>as of ${r.asOf}</strong>: buy <strong>${money(r.entry)}</strong> · target <strong>${money(r.target)}</strong> · stop <strong>${money(r.stop)}</strong> · ${r.shares} shares</div>`;
+  const logBtn = `<button class="ghost-btn" id="replay-log" type="button" data-tip="Files this replay in your journal as one rep. Thirty of these gives you your system's real win rate, average R, and worst losing streak — the numbers that tell you whether to trust it when money is on the line.">📓 Log this rep to the journal</button>`;
   if (r.outcome === 'no_fill') {
-    out.innerHTML = `${levelsLine}<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>`;
+    out.innerHTML = `${levelsLine}<div class="replay-outcome">⚪ No fill</div><p class="hint">${esc(r.message)}</p>
+      <div class="plan-buttons">${logBtn}</div>
+      <p class="hint">Worth logging: a setup that never triggered is a real outcome, and a system that rarely fills is telling you something.</p>`;
+    wireReplayLog(r);
     return;
   }
   const map = {
@@ -994,8 +1019,45 @@ function renderReplayResult(r) {
       ${outCell('', '')}
     </div>
     <div id="replay-chart" class="chart-box"></div>
+    <div class="plan-buttons">${logBtn}</div>
     <p class="hint">Entry, target, and stop are set from the 20-day support/resistance and ATR stop <strong>as of ${r.asOf}</strong> — using only data up to that day, so there's no lookahead.</p>`;
   if (window.charts) window.charts.replayChart(document.getElementById('replay-chart'), r);
+  wireReplayLog(r);
+}
+
+// A replay is the system run mechanically, so it's logged as having followed
+// the rules by definition. That makes the replay set your baseline: what the
+// system does when nobody second-guesses it. Every live trade you grade later
+// gets measured against it.
+function wireReplayLog(r) {
+  const btn = document.getElementById('replay-log');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const riskPS = r.entry != null && r.stop != null ? round2(r.entry - r.stop) : null;
+    const status = r.outcome === 'open' ? 'open' : 'closed';
+    const saved = await logTrade({
+      symbol: r.symbol,
+      kind: 'stock',
+      source: 'replay',
+      status,
+      entry_style: r.style || state.entryStyle,
+      entry: r.entry, target: r.target, stop: r.stop, shares: r.shares,
+      risk_per_share: riskPS,
+      planned_risk: riskPS != null && r.shares ? round2(riskPS * r.shares) : null,
+      reward_risk: riskPS ? round2((r.target - r.entry) / riskPS) : null,
+      thesis: `Replay of the ${r.style === 'breakout' ? 'breakout' : 'pullback'} rule with levels as of ${r.asOf}.`,
+      entry_price: r.entryPrice ?? null,
+      exit_price: r.outcome === 'open' ? null : (r.exitPrice ?? null),
+      entry_date: r.entryDate ?? null,
+      exit_date: r.outcome === 'open' ? null : (r.exitDate ?? null),
+      outcome: r.outcome === 'open' ? null : r.outcome,
+      followed_rules: true, // mechanical by construction
+    }, { announce: false });
+    if (saved) {
+      btn.textContent = '✓ Logged';
+      btn.disabled = true;
+    }
+  });
 }
 
 function switchView(v) {
@@ -1005,8 +1067,10 @@ function switchView(v) {
   $('#planner-view').classList.toggle('hidden', v !== 'planner');
   $('#analysis-view').classList.toggle('hidden', v !== 'analysis');
   $('#paper-view').classList.toggle('hidden', v !== 'paper');
+  $('#journal-view').classList.toggle('hidden', v !== 'journal');
   if (v === 'analysis' && state.symbol) loadAnalysis();
   if (v === 'paper') loadPaper();
+  if (v === 'journal') loadJournal();
 }
 
 $('#view-toggle').querySelectorAll('button').forEach((b) =>
@@ -1023,6 +1087,7 @@ function openPaper() {
   $('#view-toggle').classList.toggle('hidden', !hasSymbol);
   $('#planner-view').classList.add('hidden');
   $('#analysis-view').classList.add('hidden');
+  $('#journal-view').classList.add('hidden');
   $('#paper-view').classList.remove('hidden');
   state.view = 'paper';
   if (hasSymbol) {
@@ -1114,16 +1179,23 @@ function renderPaperOrders(orders) {
     btn.addEventListener('click', () => cancelPaperOrder(btn.dataset.cancel)));
 }
 
-async function placePaperOrder(order, confirmMsg) {
+async function placePaperOrder(order, confirmMsg, journalPayload) {
   if (!window.confirm(confirmMsg)) return;
   try {
-    await api('/paper/order', {
+    const { order: placed } = await api('/paper/order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(order),
     });
+    // Every order you place gets journaled — no opt-out. The trades that
+    // never make it into the record are exactly the ones worth reviewing.
+    if (journalPayload) {
+      await logTrade({ ...journalPayload, order_id: placed?.id || '' }, { announce: false });
+    }
     switchView('paper'); // jump to the paper view and refresh
-    window.alert('Paper order placed.');
+    window.alert(journalPayload
+      ? 'Paper order placed — and logged to your journal.'
+      : 'Paper order placed.');
   } catch (err) {
     window.alert('Order rejected: ' + err.message);
   }
@@ -1141,6 +1213,310 @@ async function closePaperPosition(symbol) {
 }
 
 $('#paper-refresh').addEventListener('click', loadPaper);
+
+// ---------- Trade journal ----------
+// The feedback loop. A plan you don't write down can't teach you anything:
+// you remember the winners, forget the rule-breaks, and after a year you have
+// a hundred trades and no lesson. One row per decision fixes that.
+
+function openJournal() {
+  const hasSymbol = Boolean(state.symbol);
+  $('#empty-state').classList.add('hidden');
+  $('#scan-panel').classList.add('hidden');
+  $('#content').classList.remove('hidden');
+  $('#ticker-header').classList.toggle('hidden', !hasSymbol);
+  $('#view-toggle').classList.toggle('hidden', !hasSymbol);
+  $('#planner-view').classList.add('hidden');
+  $('#analysis-view').classList.add('hidden');
+  $('#paper-view').classList.add('hidden');
+  $('#journal-view').classList.remove('hidden');
+  state.view = 'journal';
+  if (hasSymbol) {
+    $('#view-toggle').querySelectorAll('button').forEach((b) =>
+      b.classList.toggle('active', b.dataset.view === 'journal'));
+  }
+  loadJournal();
+}
+
+async function loadJournal() {
+  const list = $('#journal-list');
+  list.innerHTML = '<div class="loading">Loading your journal…</div>';
+  const qs = new URLSearchParams();
+  if (state.journalStatus) qs.set('status', state.journalStatus);
+  if (state.journalSymbol) qs.set('symbol', state.journalSymbol);
+  try {
+    const [{ trades }, stats] = await Promise.all([
+      api(`/journal${qs.toString() ? '?' + qs : ''}`),
+      api('/journal/stats'),
+    ]);
+    state.journalTrades = trades;
+    renderJournalStats(stats);
+    renderJournalInsight(stats);
+    renderJournalSymbols(trades);
+    renderJournalList(trades);
+  } catch (err) {
+    list.innerHTML = `<div class="error-banner">Couldn’t load the journal: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderJournalStats(s) {
+  const r = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + 'R');
+  const expectancyCls = s.avgR == null ? '' : s.avgR > 0 ? 'good' : 'bad';
+  const discCls = s.disciplineRate == null ? '' : s.disciplineRate >= 0.8 ? 'good' : 'warn';
+  $('#journal-stats').innerHTML = `
+    ${scoreCard('Trades logged', s.total,
+      `${s.planned} planned · ${s.open} open · ${s.closed} closed`)}
+    ${scoreCard('Win rate', s.winRate != null ? pct(s.winRate, 0) : '—',
+      s.scored ? `${s.wins}W / ${s.losses}L across ${s.scored} scored` : 'No closed trades yet')}
+    ${scoreCard('Expectancy', r(s.avgR),
+      s.scored ? `Average result per trade · ${r(s.totalR)} total` : 'The number that decides if the system pays', expectancyCls)}
+    ${scoreCard('Discipline', s.disciplineRate != null ? pct(s.disciplineRate, 0) : '—',
+      s.reviewed ? `Followed your rules on ${s.followedCount} of ${s.reviewed} reviewed` : 'Grade a closed trade to start', discCls)}
+    ${scoreCard('Avg win / loss', `${r(s.avgWinR)} / ${r(s.avgLossR)}`,
+      'A system can win 40% of the time and still pay, if the wins are bigger')}
+    ${scoreCard('Worst losing streak', s.worstLossStreak || '—',
+      'What a normal bad patch looks like — before you live through one')}`;
+}
+
+// The comparison the journal exists to produce: your results when you ran the
+// system versus when you overrode it. Most people never measure this, which is
+// exactly why they keep overriding it.
+function renderJournalInsight(s) {
+  const el = $('#journal-insight');
+  if (!el) return;
+  if (s.followedCount < 3 || s.brokeCount < 3 || s.avgRFollowed == null || s.avgRBroke == null) {
+    el.innerHTML = '';
+    return;
+  }
+  const diff = s.avgRFollowed - s.avgRBroke;
+  const better = diff > 0;
+  el.innerHTML = `
+    <div class="journal-insight ${better ? 'good-box' : 'warn-box'}">
+      <strong>${better ? '📐 Your rules are beating your instincts.' : '🤔 Your overrides are outperforming your rules.'}</strong>
+      Trades where you followed the system averaged
+      <strong>${s.avgRFollowed >= 0 ? '+' : ''}${s.avgRFollowed.toFixed(2)}R</strong> (${s.followedCount} trades);
+      trades where you broke it averaged
+      <strong>${s.avgRBroke >= 0 ? '+' : ''}${s.avgRBroke.toFixed(2)}R</strong> (${s.brokeCount}).
+      ${better
+        ? 'The discipline is worth real money — protect it.'
+        : 'Worth a look: either the overrides are a skill worth writing into the rules, or the sample is still too small to trust. Keep logging before you change anything.'}
+    </div>`;
+}
+
+function renderJournalSymbols(trades) {
+  const sel = $('#journal-symbol-filter');
+  const symbols = [...new Set((state.journalAllSymbols || []).concat(trades.map((t) => t.symbol)))].sort();
+  state.journalAllSymbols = symbols;
+  sel.innerHTML = '<option value="">All symbols</option>' +
+    symbols.map((s) => `<option value="${esc(s)}" ${s === state.journalSymbol ? 'selected' : ''}>${esc(s)}</option>`).join('');
+}
+
+const OUTCOME_META = {
+  target: { icon: '🎯', label: 'Target hit', cls: 'good' },
+  stopped: { icon: '🛑', label: 'Stopped out', cls: 'bad' },
+  manual: { icon: '✋', label: 'Closed by hand', cls: '' },
+  no_fill: { icon: '⚪', label: 'Never filled', cls: 'muted' },
+};
+
+function renderJournalList(trades) {
+  const list = $('#journal-list');
+  if (!trades.length) {
+    list.innerHTML = `<div class="event-none">Nothing logged yet. Build a plan in
+      <strong>🔍 Research</strong> and hit <strong>📓 Log to journal</strong>, or run a
+      <strong>Historical Replay</strong> and log the result — replays are the fastest way to
+      put thirty reps on the board.</div>`;
+    return;
+  }
+  list.innerHTML = trades.map(journalCard).join('');
+  list.querySelectorAll('[data-toggle]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const id = Number(b.dataset.toggle);
+      if (state.journalOpen.has(id)) state.journalOpen.delete(id);
+      else state.journalOpen.add(id);
+      renderJournalList(state.journalTrades);
+    }));
+  list.querySelectorAll('[data-save]').forEach((b) =>
+    b.addEventListener('click', () => saveJournalReview(Number(b.dataset.save))));
+  list.querySelectorAll('[data-del]').forEach((b) =>
+    b.addEventListener('click', () => deleteJournalTrade(Number(b.dataset.del))));
+  list.querySelectorAll('[data-rules]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const wrap = b.closest('.rules-toggle');
+      wrap.querySelectorAll('button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      wrap.dataset.value = b.dataset.rules;
+    }));
+}
+
+function journalCard(t) {
+  const open = state.journalOpen.has(t.id);
+  const om = OUTCOME_META[t.outcome] || {};
+  const rCls = t.r_multiple == null ? '' : t.r_multiple > 0 ? 'good' : 'bad';
+  const statusCls = t.status === 'closed' ? 'muted' : t.status === 'open' ? 'good' : '';
+
+  const planLine = t.entry != null
+    ? `buy <strong>${money(t.entry)}</strong>${t.target != null ? ` → target <strong>${money(t.target)}</strong>` : ''}${t.stop != null ? ` · stop <strong>${money(t.stop)}</strong>` : ''}${t.shares ? ` · ${t.shares} sh` : ''}${t.reward_risk != null ? ` · ${t.reward_risk.toFixed(1)}:1` : ''}`
+    : '<span class="muted">No levels recorded</span>';
+
+  const outcomeLine = t.status === 'closed'
+    ? `<div class="journal-outcome">
+         <span class="${om.cls || ''}">${om.icon || ''} ${om.label || t.outcome || 'Closed'}</span>
+         ${t.pnl != null ? `<span class="${t.pnl >= 0 ? 'good' : 'bad'}">${t.pnl >= 0 ? '+' : ''}${money(t.pnl)}</span>` : ''}
+         ${t.r_multiple != null ? `<span class="${rCls}"><strong>${t.r_multiple >= 0 ? '+' : ''}${t.r_multiple.toFixed(2)}R</strong></span>` : ''}
+         ${t.followed_rules === 1 ? '<span class="badge good-box">✅ followed the rules</span>'
+           : t.followed_rules === 0 ? '<span class="badge warn-box">⚠️ broke the rules</span>'
+           : '<span class="badge">not graded yet</span>'}
+       </div>`
+    : '';
+
+  return `
+    <div class="journal-card${t.followed_rules === 0 ? ' broke' : ''}">
+      <div class="journal-head">
+        <div>
+          <strong class="journal-sym">${esc(t.symbol)}</strong>
+          <span class="badge">${esc(t.status)}</span>
+          ${t.entry_style ? `<span class="badge">${esc(t.entry_style)}</span>` : ''}
+          ${t.source !== 'paper' ? `<span class="badge">${esc(t.source)}</span>` : ''}
+        </div>
+        <span class="journal-date ${statusCls}" data-tip="${t.entry_date ? 'Date the trade was entered' : 'Date the plan was logged'}">${esc((t.entry_date || t.planned_at || '').slice(0, 10))}</span>
+      </div>
+      <div class="journal-plan">${planLine}</div>
+      ${t.thesis ? `<div class="journal-thesis">“${esc(t.thesis)}”</div>` : ''}
+      ${outcomeLine}
+      ${t.lesson ? `<div class="journal-lesson">📝 ${esc(t.lesson)}</div>` : ''}
+      <div class="journal-actions">
+        <button class="ghost-btn sm" data-toggle="${t.id}">${open ? 'Close' : t.status === 'closed' ? 'Edit review' : 'Review / record outcome'}</button>
+        <button class="ghost-btn sm" data-del="${t.id}">Delete</button>
+      </div>
+      ${open ? journalReviewForm(t) : ''}
+    </div>`;
+}
+
+function journalReviewForm(t) {
+  const v = (x) => (x == null ? '' : x);
+  const opt = (val, label, cur) => `<option value="${val}" ${cur === val ? 'selected' : ''}>${label}</option>`;
+  return `
+    <div class="journal-review" data-form="${t.id}">
+      <div class="calc-inputs">
+        <div class="field"><label>Status</label>
+          <select id="jr-status-${t.id}">
+            ${opt('planned', 'Planned — not filled yet', t.status)}
+            ${opt('open', 'Open — filled, still running', t.status)}
+            ${opt('closed', 'Closed — done', t.status)}
+          </select></div>
+        <div class="field"><label>Outcome</label>
+          <select id="jr-outcome-${t.id}">
+            ${opt('', '—', t.outcome || '')}
+            ${opt('target', '🎯 Target hit', t.outcome)}
+            ${opt('stopped', '🛑 Stopped out', t.outcome)}
+            ${opt('manual', '✋ Closed by hand', t.outcome)}
+            ${opt('no_fill', '⚪ Never filled', t.outcome)}
+          </select></div>
+        <div class="field"><label>Fill price</label>
+          <input id="jr-entry-${t.id}" type="number" step="0.01" value="${v(t.entry_price)}" /></div>
+        <div class="field"><label>Exit price</label>
+          <input id="jr-exit-${t.id}" type="number" step="0.01" value="${v(t.exit_price)}" /></div>
+        <div class="field"><label>Fill date</label>
+          <input id="jr-edate-${t.id}" type="date" value="${v(t.entry_date)}" /></div>
+        <div class="field"><label>Exit date</label>
+          <input id="jr-xdate-${t.id}" type="date" value="${v(t.exit_date)}" /></div>
+      </div>
+      <div class="field">
+        <label><span class="q" data-tip="The only grade that matters while you're learning. Did you take the entry you planned, at the size you planned, and let the exits do their job? A loss that followed the plan is a PASS. A win you chased is a FAIL.">Did you follow your rules?</span></label>
+        <div class="toggle rules-toggle" data-value="${t.followed_rules == null ? '' : t.followed_rules}">
+          <button type="button" class="${t.followed_rules === 1 ? 'active' : ''}" data-rules="1">✅ Yes</button>
+          <button type="button" class="${t.followed_rules === 0 ? 'active' : ''}" data-rules="0">⚠️ No</button>
+        </div>
+      </div>
+      <div class="field">
+        <label><span class="q" data-tip="One sentence. What would you tell yourself before the next trade like this one?">Lesson</span></label>
+        <textarea id="jr-lesson-${t.id}" rows="2" placeholder="One sentence — what would you tell yourself before the next one?">${esc(v(t.lesson))}</textarea>
+      </div>
+      <button class="primary-btn" data-save="${t.id}">Save review</button>
+      <p class="hint">P&amp;L and R are worked out from the plan you committed to — fill price, exit price, and the stop you set.</p>
+    </div>`;
+}
+
+async function saveJournalReview(id) {
+  const g = (p) => document.getElementById(`jr-${p}-${id}`);
+  const rules = document.querySelector(`[data-form="${id}"] .rules-toggle`)?.dataset.value;
+  const body = {
+    status: g('status').value,
+    outcome: g('outcome').value,
+    entry_price: g('entry').value,
+    exit_price: g('exit').value,
+    entry_date: g('edate').value,
+    exit_date: g('xdate').value,
+    lesson: g('lesson').value,
+  };
+  if (rules === '0' || rules === '1') body.followed_rules = rules === '1';
+  try {
+    await api(`/journal/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    state.journalOpen.delete(id);
+    loadJournal();
+  } catch (err) {
+    window.alert('Couldn’t save the review: ' + err.message);
+  }
+}
+
+async function deleteJournalTrade(id) {
+  if (!window.confirm('Delete this journal entry? The record is the whole point — only delete mistakes.')) return;
+  try { await api(`/journal/${id}`, { method: 'DELETE' }); state.journalOpen.delete(id); loadJournal(); }
+  catch (err) { window.alert('Delete failed: ' + err.message); }
+}
+
+// Write a plan into the journal. Called both when a plan is placed as a paper
+// order and when it's logged on its own.
+async function logTrade(payload, { announce = true } = {}) {
+  try {
+    const { trade } = await api('/journal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (announce) window.alert(`Logged ${trade.symbol} to your journal. Record the outcome there when it's done.`);
+    return trade;
+  } catch (err) {
+    window.alert('Couldn’t log to the journal: ' + err.message);
+    return null;
+  }
+}
+
+// The plan currently in the builder, shaped for the journal.
+function planPayload({ entry, target, stopPrice, shares, riskPS, dollarRisk, rr }) {
+  const a = state.analysis;
+  return {
+    symbol: state.symbol,
+    kind: 'stock',
+    source: 'paper',
+    status: 'planned',
+    entry_style: state.entryStyle,
+    entry, target, stop: stopPrice, shares,
+    risk_per_share: riskPS,
+    planned_risk: dollarRisk,
+    reward_risk: rr,
+    thesis: (document.getElementById('plan-thesis')?.value || '').trim(),
+    ctx_price: a?.price ?? null,
+    ctx_trend: a?.trend?.label ?? '',
+    ctx_regime: a?.trend?.regime ?? '',
+    ctx_rsi: a?.momentum?.rsi14 ?? null,
+  };
+}
+
+$('#journal-btn').addEventListener('click', openJournal);
+$('#journal-refresh').addEventListener('click', loadJournal);
+$('#journal-status-filter').addEventListener('change', (e) => {
+  state.journalStatus = e.target.value;
+  loadJournal();
+});
+$('#journal-symbol-filter').addEventListener('change', (e) => {
+  state.journalSymbol = e.target.value;
+  loadJournal();
+});
 
 // ---------- Settings ----------
 function setKeyPlaceholder(sel, st) {

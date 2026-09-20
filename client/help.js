@@ -431,6 +431,49 @@ const COURSE = [
       in an uptrend, build a 1%-risk plan, replay it on history, then place it in Paper. That's your
       system, running.</div>`,
   },
+  {
+    nav: 'Keep a journal',
+    html: `
+      <h3>Lesson 13 — The journal is the feedback loop</h3>
+      <p>A system you don't measure isn't a system yet — it's a habit. Memory is a terrible
+      record: you'll remember the winners, quietly forget the trades where you moved a stop,
+      and after a hundred trades you'll have a hundred reps and no lesson. The
+      <strong>📓 Journal</strong> tab fixes that by storing one row per <em>decision</em>.</p>
+      <h3 style="font-size:14px">Grade the process, not the P&amp;L</h3>
+      <p>This is the part people get backwards. Every closed trade gets one question:
+      <strong>did you follow your rules?</strong></p>
+      <ul>
+        <li>A <strong>loss</strong> that followed the plan is a <strong>pass</strong>. Losses are
+        a cost of doing business — your system budgets for them.</li>
+        <li>A <strong>win</strong> you chased, oversized, or held past your target is a
+        <strong>fail</strong>. It paid this time and taught you a habit that won't.</li>
+      </ul>
+      <p>Over enough trades the journal shows you the one comparison that matters: your average
+      result when you ran the system versus when you overrode it. Almost nobody measures this,
+      which is exactly why almost everybody keeps overriding.</p>
+      <h3 style="font-size:14px">Think in R, not dollars</h3>
+      <p><strong>R</strong> is your result measured in units of the risk you chose up front. If
+      your stop was $500 away and you made $1,000, that's <strong>+2R</strong> — whether the
+      position was $5,000 or $50,000. Dollars flatter a big position and hide a bad decision;
+      R compares every trade on the same scale. Two numbers follow from it:</p>
+      <dl>
+        <dt>Win rate</dt><dd>How often you're right. Lower than you'd think, and it's fine —
+        many good systems win under half the time.</dd>
+        <dt>Expectancy (average R)</dt><dd>What you make per trade on average. <em>This</em> is
+        the number that decides whether the system makes money. Positive expectancy with a 35%
+        win rate beats negative expectancy with a 70% one, every time.</dd>
+      </dl>
+      <div class="tip">💡 <strong>Worst losing streak</strong> is the quiet hero of this page.
+      Most people abandon a perfectly good system during a drawdown they never knew was normal.
+      Seeing "5 in a row" in your own replay history — before real money is involved — is what
+      lets you sit through the sixth.</div>
+      <div class="do">✍️ <strong>Try it:</strong> Run <strong>Historical Replay</strong> on a
+      watchlist name, hit <strong>📓 Log this rep</strong>, and repeat with different symbols and
+      start dates. Thirty reps in an afternoon gives you your system's real win rate, expectancy,
+      and worst losing streak — the numbers that tell you whether to trust it when it's your
+      money. Replays log as "followed the rules" by definition, so they become the baseline every
+      live trade you grade gets measured against.</div>`,
+  },
 ];
 
 // ============ Modal wiring ============

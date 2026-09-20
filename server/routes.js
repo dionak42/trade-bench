@@ -9,7 +9,10 @@ import { runReplay } from './replay.js';
 import {
   getAccount, getPositions, getOrders, placeOrder, cancelOrder, closePosition,
 } from './paper.js';
-import { listWatchlist, addWatchlist, removeWatchlist, getSetting, setSetting } from './db.js';
+import {
+  listWatchlist, addWatchlist, removeWatchlist, getSetting, setSetting,
+  listTrades, createTrade, updateTrade, deleteTrade, tradeStats,
+} from './db.js';
 import { cfg } from './config.js';
 
 const KEY_FIELDS = ['ALPACA_API_KEY_ID', 'ALPACA_API_SECRET_KEY', 'FINNHUB_API_KEY'];
@@ -118,6 +121,38 @@ router.delete('/paper/order/:id', wrap(async (req, res) => {
 
 router.post('/paper/close/:symbol', wrap(async (req, res) => {
   res.json({ order: await closePosition(req.params.symbol) });
+}));
+
+// ---- Trade journal ----
+// One row per decision: written when you commit to a plan, updated when it
+// fills, reviewed when it's done. Stats live in the DB layer so the numbers
+// are derived from the plan, never posted by the browser.
+router.get('/journal/stats', wrap(async (_req, res) => {
+  res.json(tradeStats());
+}));
+
+router.get('/journal', wrap(async (req, res) => {
+  const { status, symbol, source, limit } = req.query;
+  res.json({ trades: listTrades({ status, symbol, source, limit }) });
+}));
+
+router.post('/journal', wrap(async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.symbol || !String(body.symbol).trim()) {
+    return res.status(400).json({ error: 'symbol is required' });
+  }
+  res.status(201).json({ trade: createTrade(body) });
+}));
+
+router.patch('/journal/:id', wrap(async (req, res) => {
+  const trade = updateTrade(req.params.id, req.body ?? {});
+  if (!trade) return res.status(404).json({ error: 'No such trade.' });
+  res.json({ trade });
+}));
+
+router.delete('/journal/:id', wrap(async (req, res) => {
+  deleteTrade(req.params.id);
+  res.status(204).end();
 }));
 
 // ---- Settings (API keys, display name) ----
