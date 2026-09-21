@@ -25,6 +25,10 @@ export function runSequence(symbol, bars, opts = {}) {
   const {
     mode = 'risk', accountSize = 0, riskPct = 1, capital = 0,
     stopAtrMult = 2, entryStyle = 'pullback', maxWaitBars = 20,
+    // The stricter reading of rule 2: the regime filter alone lets a name
+    // through while price has already fallen below both averages. Turning this
+    // on additionally requires price above the 200-day at the decision bar.
+    requireAbove200 = false,
     // Don't start trading until enough history exists for every input the
     // system uses — including the 200-day average behind the regime filter.
     // Trading before then would quietly test a different, filterless system.
@@ -34,10 +38,19 @@ export function runSequence(symbol, bars, opts = {}) {
   const trades = [];
   let i = Math.max(MIN_HISTORY, warmupBars);
   let noFills = 0;
+  let filteredOut = 0;
 
   while (i < bars.length - 1) {
     const lv = deriveLevels(bars, i, { stopAtrMult, entryStyle });
     if (!lv) break;
+
+    // Blocked by the filter: step one bar and re-check, rather than burning
+    // the whole waiting window on a setup that was never allowed to fire.
+    if (requireAbove200 && lv.aboveSma200 !== true) {
+      filteredOut++;
+      i++;
+      continue;
+    }
 
     // 1) Wait (up to maxWaitBars) for the entry to trigger.
     let entryIdx = -1;
@@ -94,6 +107,7 @@ export function runSequence(symbol, bars, opts = {}) {
       symbol,
       style: entryStyle,
       regime: lv.regime,              // regime at the moment of the decision
+      aboveSma200: lv.aboveSma200,    // price vs the 200-day, same moment
       asOf: lv.asOf,
       entry: lv.entry, target: lv.target, stop: lv.stop,
       shares,
@@ -111,7 +125,7 @@ export function runSequence(symbol, bars, opts = {}) {
     i = exitIdx + 1; // next trade starts only after this one closed
   }
 
-  return { trades, noFills };
+  return { trades, noFills, filteredOut };
 }
 
 // ---------------------------------------------------------------------------
@@ -245,11 +259,24 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
   // golden-cross regime". If the death-cross bucket is no worse, the filter is
   // costing trades without buying safety, and the rule should change.
   const byRegime = segment(inSample, (t) => t.regime);
+  const byAbove200 = segment(inSample, (t) =>
+    t.aboveSma200 == null ? null : (t.aboveSma200 ? 'above 200-day' : 'below 200-day'));
   const golden = byRegime.find((b) => b.key === 'golden');
   const death = byRegime.find((b) => b.key === 'death');
   const filterVerdict = golden && death && golden.scored >= 5 && death.scored >= 5
     ? { goldenAvgR: golden.avgR, deathAvgR: death.avgR, edge: round(golden.avgR - death.avgR),
         helps: golden.avgR > death.avgR }
+    : null;
+
+  // The same test as the regime verdict, for the stricter reading of rule 2.
+  // If trades taken below the 200-day are no worse, the extra condition is
+  // costing setups without buying anything.
+  const above = byAbove200.find((b) => b.key === 'above 200-day');
+  const below = byAbove200.find((b) => b.key === 'below 200-day');
+  const above200Verdict = above && below && above.scored >= 5 && below.scored >= 5
+    ? { aboveAvgR: above.avgR, belowAvgR: below.avgR,
+        aboveTrades: above.scored, belowTrades: below.scored,
+        edge: round(above.avgR - below.avgR), helps: above.avgR > below.avgR }
     : null;
 
   return {
@@ -259,6 +286,8 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
     overall,
     bySymbol: perSymbol.sort((a, b) => (b.totalR ?? -999) - (a.totalR ?? -999)),
     byRegime,
+    byAbove200,
+    above200Verdict,
     byYear: segment(inSample, (t) => t.year),
     byOutcome: segment(inSample, (t) => t.outcome),
     filterVerdict,

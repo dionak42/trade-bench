@@ -29,7 +29,15 @@ Only in a **golden-cross regime** — the 50-day above the 200-day, shown on the
 Trend card. If the Research view says death-cross regime, I skip the name. No
 exceptions, no "but this one looks different."
 
-**3. Where I enter**
+> **Open question, being tested.** This rule says nothing about where *price*
+> sits. A name can pass it — 50 still above 200 — while price has already fallen
+> below both averages and the gap is closing toward a death cross. The Trend card
+> calls that "Mixed", not "Uptrend", so the rule and the card disagree.
+>
+> The stricter reading is **regime + price above the 200-day**. The backtest has
+> a toggle for it, and reports both sides from a single run under *By price vs
+> the 200-day at entry*. Settle this with evidence in the development and
+> validation windows — not while looking at a chart of something I already own.
 A **buy-limit on a pullback to 20-day support** — the plan builder's default.
 I place the order and wait. If it doesn't fill, that's a valid outcome and I
 log it. I never buy at market because the chart looked good while I was
@@ -214,6 +222,7 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 | Entry style | Pullback only | Compare pullback vs breakout expectancy in replay |
 | Stop distance | ~2× ATR | Average loss materially worse than -1.0R → widen |
 | Regime filter | Golden cross only | Check how many skipped setups would have won |
+| Price vs 200-day | Not required | Run both sides of the toggle; keep the stricter rule only if it earns its keep |
 | Hold period | No time limit | If winners resolve in ~20 days, dead trades tie up risk |
 | Order resting time | 20 trading days | Compare fill rate and expectancy at 10 / 20 / 40 in the backtest |
 | Holdout length | 12 months | Enough trades out of sample to judge? If under ~20, lengthen it |
@@ -223,6 +232,10 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-21** — v1.6: flagged rule 2's silence on where price sits relative to
+  the 200-day, raised by a VRT setup that passed the regime filter while trading
+  below both averages. Added the stricter variant to the backtest rather than
+  deciding it in the moment.
 - **2026-09-21** — v1.5: recorded that the system is Roth-only and why —
   cross-account wash sales, where a loss harvested in a taxable account is
   permanently destroyed by a mechanical buy in here, and the fact that the risk
