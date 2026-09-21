@@ -132,8 +132,12 @@ be, so the comparison is honest. Then I read the segments, not just the
 headline: by symbol, by year, by regime, and whether the edge was steady across
 rolling windows or arrived in one stretch.
 
-*Advance when:* the rules **survive the held-out period** — still positive, and
-not less than about half the development expectancy — and I can state from
+*Advance when:* the rules **are not contradicted by the held-out period** — and
+I read that honestly. A held-out window is usually small, and a small window
+often cannot tell a good system from a dead one. If the development figure sits
+inside the range the window can resolve, the answer is *"not enough trades to
+say"*, which is neither permission nor a verdict against. Failure means the
+window had enough trades to rule the edge out, and did. Also required — and I can state from
 memory my system's **expectancy, worst drawdown, and worst losing streak**, and
 the result isn't resting on one symbol or one good year. If the development
 headline is within about ±0.05R of zero, that is not a near miss — it's no
@@ -257,6 +261,13 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-21** — v1.9: unsealed the held-out window. 24 trades, +0.05R against
+  +0.39R in development. Not a pass, but not the failure the app first reported:
+  with 24 trades the resolvable range is −0.56R to +0.67R, which contains the
+  development figure, and a stretch that weak turns up 17% of the time even if
+  the edge is real. Recorded as **unresolved**. Phase 1's gate now says so
+  explicitly, and the held-out verdict in the app no longer declares failure on
+  a sample too small to support it.
 - **2026-09-21** — v1.8: **rule 2 now requires price above the 200-day**, settled
   by backtest. Same profit, a third of the drawdown, and 2022 flips from −6.88R
   to +2.79R. Also settled the hold-period question: no time stop, because the
