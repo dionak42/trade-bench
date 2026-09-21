@@ -60,6 +60,17 @@ resistance, stop at ~2× ATR below entry. Then I leave it alone. Moving a stop
 away from price is the single rule I am most likely to break, so it is the one
 I grade hardest.
 
+**There is no clock on a position.** The only two ways out are the target and
+the stop, whether that takes three days or three years. (The 20-day rule in rule
+3 is a clock on the *order*, not on the position — easy to confuse.)
+
+> **Open question, being tested.** A time stop would free up cash from dead
+> trades, which matters more at my size than it would with plenty of dry powder.
+> But a trend system earns most of its money from a few trades that take months,
+> and a clock can decapitate exactly those. The backtest has a *Time stop* field
+> — 0 for none — and reports **average days held**, so I can see how long winners
+> actually take before deciding whether a clock is affordable.
+
 **6. What I don't do**
 No options — not covered calls, not cash-secured puts. The Options tab stays a
 place to learn and look, not part of my system. No shorting, no leverage, no
@@ -203,7 +214,7 @@ loss until nothing is left. So:
    clean check, I either wait, or I let Phase 2 do it: **paper trading is
    out-of-sample testing on prices that haven't happened yet**, and there's an
    unlimited supply of it.
-5. **Log the change here with the date and the evidence.** The git history of
+7. **Log the change here with the date and the evidence.** The git history of
    this file is the record of how my thinking actually developed.
 
 If the journal shows my rule-breaks *outperforming* my rules over a real sample,
@@ -223,7 +234,7 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 | Stop distance | ~2× ATR | Average loss materially worse than -1.0R → widen |
 | Regime filter | Golden cross only | Check how many skipped setups would have won |
 | Price vs 200-day | Not required | Run both sides of the toggle; keep the stricter rule only if it earns its keep |
-| Hold period | No time limit | If winners resolve in ~20 days, dead trades tie up risk |
+| Hold period | No time limit | Read average days held, then test a clock at ~2× that. Keep it only if expectancy survives |
 | Order resting time | 20 trading days | Compare fill rate and expectancy at 10 / 20 / 40 in the backtest |
 | Holdout length | 12 months | Enough trades out of sample to judge? If under ~20, lengthen it |
 | Validation length | 12 months | Same test — under ~20 trades and differences here are noise |
@@ -232,6 +243,10 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-21** — v1.7: wrote down that there is no clock on a position — only
+  the target and the stop — and added a time stop to the backtest as a testable
+  option rather than a rule. Fixed the duplicate numbering in *Changing these
+  rules*.
 - **2026-09-21** — v1.6: flagged rule 2's silence on where price sits relative to
   the 200-day, raised by a VRT setup that passed the regime filter while trading
   below both averages. Added the stricter variant to the backtest rather than
