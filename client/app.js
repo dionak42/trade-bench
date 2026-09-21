@@ -2387,9 +2387,9 @@ function regimeSectorChip(s) {
   const wk = s.weekChange == null ? '' : ` · ${s.weekChange >= 0 ? '+' : ''}${(s.weekChange * 100).toFixed(1)}%`;
   return `
     <button type="button" class="rg-sector ${cls}" data-symbol="${esc(s.symbol)}"
-      data-tip="${esc(s.name)} — ${s.downWeeks} consecutive down week(s)${s.aboveSma200 === false ? ', below its 200-day' : ''}. Click to research the ETF.">
-      <span class="rg-sector-sym">${esc(s.symbol)}</span>
-      <span class="rg-sector-streak">${streak}${wk}</span>
+      data-tip="${esc(s.name)} (${esc(s.symbol)}) — ${s.downWeeks} consecutive down week(s)${s.aboveSma200 === false ? ', below its 200-day' : ''}. Click to research the ETF.">
+      <span class="rg-sector-name">${esc(s.name)}</span>
+      <span class="rg-sector-streak"><span class="rg-sector-sym">${esc(s.symbol)}</span> · ${streak}${wk}</span>
     </button>`;
 }
 

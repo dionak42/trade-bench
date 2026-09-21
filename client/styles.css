@@ -765,14 +765,17 @@ body {
   transition: border-color 0.12s ease;
 }
 .rg-sector:hover { border-color: var(--accent); }
-.rg-sector-sym { font-weight: 700; font-size: 12.5px; }
+/* The sector name leads, because that is what you actually read; the ticker
+   is only the key you click through on, so it rides with the streak line. */
+.rg-sector-name { font-weight: 700; font-size: 12.5px; white-space: nowrap; }
 .rg-sector-streak { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rg-sector-sym { font-weight: 600; letter-spacing: 0.02em; }
 .rg-sector.bad { background: var(--bad-soft); border-color: transparent; }
-.rg-sector.bad .rg-sector-sym { color: var(--bad); }
+.rg-sector.bad .rg-sector-name { color: var(--bad); }
 .rg-sector.warn { background: var(--warn-soft); border-color: transparent; }
-.rg-sector.warn .rg-sector-sym { color: var(--warn); }
+.rg-sector.warn .rg-sector-name { color: var(--warn); }
 .rg-sector.good { background: var(--good-soft); border-color: transparent; }
-.rg-sector.good .rg-sector-sym { color: var(--good); }
+.rg-sector.good .rg-sector-name { color: var(--good); }
 
 /* ---------- Macro calendar ---------- */
 .mc-note {
