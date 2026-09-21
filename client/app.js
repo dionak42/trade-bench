@@ -2020,8 +2020,11 @@ function verdictBox(r) {
          filter is costing you trades without buying safety — worth a longer window before
          changing rule 2, but note it.</li>`;
   } else {
-    filterLine = `<li>Not enough trades in both regimes to judge the golden-cross filter yet.
-      Add symbols or years if you want to test rule 2.</li>`;
+    const gc = r.byRegime?.find((b) => b.key === 'golden')?.scored ?? 0;
+    const dc = r.byRegime?.find((b) => b.key === 'death')?.scored ?? 0;
+    filterLine = `<li>Not enough trades on both sides to judge the golden-cross filter
+      (${gc} golden, ${dc} death). A bucket that thin swings on one outlier, so no
+      comparison is offered — add symbols or years if you want to test rule 2.</li>`;
   }
 
   const dev = r.splitDate ? ' on the development data' : ' over this sample';

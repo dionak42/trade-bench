@@ -143,6 +143,11 @@ export function runSequence(symbol, bars, opts = {}) {
 // Aggregation
 // ---------------------------------------------------------------------------
 
+// Minimum trades on EACH side before two segments get compared out loud. At
+// five, one +3R outlier swings a bucket's average by 0.6R — bigger than any
+// edge worth acting on — so the panel would confidently report noise.
+const MIN_SEGMENT = 20;
+
 const sum = (xs) => xs.reduce((a, b) => a + b, 0);
 const round = (n, dp = 2) => (n == null ? null : Number(n.toFixed(dp)));
 
@@ -274,7 +279,7 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
     t.aboveSma200 == null ? null : (t.aboveSma200 ? 'above 200-day' : 'below 200-day'));
   const golden = byRegime.find((b) => b.key === 'golden');
   const death = byRegime.find((b) => b.key === 'death');
-  const filterVerdict = golden && death && golden.scored >= 5 && death.scored >= 5
+  const filterVerdict = golden && death && golden.scored >= MIN_SEGMENT && death.scored >= MIN_SEGMENT
     ? { goldenAvgR: golden.avgR, deathAvgR: death.avgR, edge: round(golden.avgR - death.avgR),
         helps: golden.avgR > death.avgR }
     : null;
@@ -284,7 +289,7 @@ export async function runBacktest(symbols, opts = {}, fetchBars = getDailyBars) 
   // costing setups without buying anything.
   const above = byAbove200.find((b) => b.key === 'above 200-day');
   const below = byAbove200.find((b) => b.key === 'below 200-day');
-  const above200Verdict = above && below && above.scored >= 5 && below.scored >= 5
+  const above200Verdict = above && below && above.scored >= MIN_SEGMENT && below.scored >= MIN_SEGMENT
     ? { aboveAvgR: above.avgR, belowAvgR: below.avgR,
         aboveTrades: above.scored, belowTrades: below.scored,
         edge: round(above.avgR - below.avgR), helps: above.avgR > below.avgR }

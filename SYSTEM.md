@@ -25,19 +25,33 @@ trade tickers I heard about somewhere. Adding a name to the watchlist is a
 separate, deliberate decision made outside market hours, never in the moment.
 
 **2. When I'm allowed to buy**
-Only in a **golden-cross regime** — the 50-day above the 200-day, shown on the
-Trend card. If the Research view says death-cross regime, I skip the name. No
-exceptions, no "but this one looks different."
+Both conditions, every time:
 
-> **Open question, being tested.** This rule says nothing about where *price*
-> sits. A name can pass it — 50 still above 200 — while price has already fallen
-> below both averages and the gap is closing toward a death cross. The Trend card
-> calls that "Mixed", not "Uptrend", so the rule and the card disagree.
+1. **Golden-cross regime** — the 50-day above the 200-day, and
+2. **Price above the 200-day** at the moment I decide.
+
+If either fails I skip the name. No exceptions, no "but this one looks
+different." In practice this means the Trend card has to read **Uptrend**, not
+"Mixed".
+
+> **Settled 2026-09-21 by backtest, not by argument.** The original rule only
+> compared the two averages and said nothing about price, so a name could pass
+> while it had already broken down — which is exactly how VRT raised the
+> question. Adding the price condition over 5 years and 10 symbols:
 >
-> The stricter reading is **regime + price above the 200-day**. The backtest has
-> a toggle for it, and reports both sides from a single run under *By price vs
-> the 200-day at entry*. Settle this with evidence in the development and
-> validation windows — not while looking at a chart of something I already own.
+> | | Regime only | Both conditions |
+> |---|---|---|
+> | Expectancy | +0.27R | **+0.39R** |
+> | Total | +35.98R | +34.87R |
+> | **Worst drawdown** | −33.17R | **−10.71R** |
+> | **Worst losing streak** | 22 | **11** |
+> | 2022 | **−6.88R** | **+2.79R** |
+>
+> Practically the same profit from a third fewer trades, for a third of the
+> drawdown — and it turned the 2022 bear market from the system's worst year
+> into a positive one. That last part is why I trust it: in a falling market
+> price sits below the 200-day, so the rule keeps me out. It wins for a reason I
+> can say out loud, not because it scored highest.
 A **buy-limit on a pullback to 20-day support** — the plan builder's default.
 I place the order and wait. If it doesn't fill, that's a valid outcome and I
 log it. I never buy at market because the chart looked good while I was
@@ -233,8 +247,8 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 | Entry style | Pullback only | Compare pullback vs breakout expectancy in replay |
 | Stop distance | ~2× ATR | Average loss materially worse than -1.0R → widen |
 | Regime filter | Golden cross only | Check how many skipped setups would have won |
-| Price vs 200-day | Not required | Run both sides of the toggle; keep the stricter rule only if it earns its keep |
-| Hold period | No time limit | Read average days held, then test a clock at ~2× that. Keep it only if expectancy survives |
+| ~~Price vs 200-day~~ | **Settled — required** | Adopted 2026-09-21: cut worst drawdown from −33R to −11R and fixed 2022 |
+| ~~Hold period~~ | **Settled — no clock** | 33 of 89 trades ran past 30 days and produced +31.6R of the +34.9R total. A time stop would cut exactly the trades that pay |
 | Order resting time | 20 trading days | Compare fill rate and expectancy at 10 / 20 / 40 in the backtest |
 | Holdout length | 12 months | Enough trades out of sample to judge? If under ~20, lengthen it |
 | Validation length | 12 months | Same test — under ~20 trades and differences here are noise |
@@ -243,6 +257,10 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-21** — v1.8: **rule 2 now requires price above the 200-day**, settled
+  by backtest. Same profit, a third of the drawdown, and 2022 flips from −6.88R
+  to +2.79R. Also settled the hold-period question: no time stop, because the
+  trades held longest are the ones that produce the profit.
 - **2026-09-21** — v1.7: wrote down that there is no clock on a position — only
   the target and the stop — and added a time stop to the backtest as a testable
   option rather than a rule. Fixed the duplicate numbering in *Changing these
