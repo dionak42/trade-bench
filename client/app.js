@@ -1599,7 +1599,21 @@ function openBacktest() {
   renderBacktestControls();
 }
 
+function updateBacktestScopeNote() {
+  const el = $('#bt-scope-note');
+  if (!el) return;
+  el.innerHTML = state.symbol
+    ? `<div class="journal-insight" style="background:var(--surface-alt);margin:0 0 14px">
+         <strong>This tests your whole system, not ${esc(state.symbol)}.</strong>
+         You reached it from the ${esc(state.symbol)} tabs, but the run covers every symbol
+         listed below — that's deliberate. One stock gives you a handful of trades, and a
+         handful of trades can't tell you whether a set of rules works. Leave the list alone.
+       </div>`
+    : '';
+}
+
 function renderBacktestControls() {
+  updateBacktestScopeNote();
   const el = $('#backtest-controls');
   if (el.dataset.ready) return; // keep whatever the user typed
   const watch = (state._watchlist || []).map((w) => w.symbol);
