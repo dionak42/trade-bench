@@ -1907,22 +1907,47 @@ function holdoutPanel(r) {
       Try a longer holdout or more symbols.</div></section>`;
   }
 
-  // Did it survive? Compare like with like, and be strict: an edge that halves
-  // out of sample was probably half luck to begin with.
+  // Before judging, ask whether this many trades could tell the difference at
+  // all. A held-out window is usually small, and a small sample sits so far
+  // from its own mean that "it failed" and "it held up" are often the same
+  // data. Declaring failure on a sample that cannot support the claim is the
+  // mirror image of the overfitting this whole panel exists to prevent.
+  const se = oos.seR;
+  const lo = se != null ? oos.avgR - 1.96 * se : null;
+  const hi = se != null ? oos.avgR + 1.96 * se : null;
+  // Order matters. A window that reproduces the development edge has answered
+  // the question, however few trades it took — the sample check exists to stop
+  // a THIN result being read as failure, not to withhold a result that agrees.
   const held = oos.avgR > 0.05 && is.avgR > 0 && oos.avgR >= is.avgR * 0.5;
-  const partial = !held && oos.avgR > 0.05;
+  // Otherwise: inconclusive when the development figure still sits inside the
+  // range this window can resolve, since the two are then indistinguishable.
+  const cantTell = !held && hi != null && is.avgR != null && is.avgR >= lo && is.avgR <= hi;
+  const failed = !held && !cantTell && oos.avgR <= 0.05;
   const verdictCls = held ? 'good-box' : 'warn-box';
+  const range = hi != null ? `${rTxt(lo)} to ${rTxt(hi)}` : null;
+
   const verdict = held
     ? `✅ <strong>It held up.</strong> The rules made ${rTxt(oos.avgR)} per trade on prices you
        never studied, against ${rTxt(is.avgR)} in development. That is the closest thing to real
        evidence this tool can give you.`
-    : partial
-      ? `🤔 <strong>It faded.</strong> ${rTxt(is.avgR)} in development became ${rTxt(oos.avgR)}
-         out of sample — still positive, but a good part of the development edge was specific to
-         that stretch of history. Size accordingly, and don't trust the bigger number.`
-      : `❌ <strong>It did not survive.</strong> ${rTxt(is.avgR)} in development became
-         ${rTxt(oos.avgR)} on data you hadn't seen. The development result was a description of
-         the past, not a system. That is a genuinely useful thing to find out for free.`;
+    : cantTell
+      ? `🤷 <strong>Too few trades to tell.</strong> The held-out window made
+         ${rTxt(oos.avgR)} per trade against ${rTxt(is.avgR)} in development — but with only
+         ${oos.scored} trades, the range this window can actually resolve is
+         <strong>${range}</strong>, and the development figure sits inside it. These two
+         results are not distinguishable. That is not the same as the system failing, and it
+         is not the same as it working: this window simply cannot answer the question.
+         <br><br>What settles it is more trades, and Phase 2 is where they come from —
+         paper trading runs on prices that have not happened yet, so it cannot be
+         contaminated and there is an unlimited supply.`
+      : failed
+        ? `❌ <strong>It did not survive.</strong> ${rTxt(is.avgR)} in development became
+           ${rTxt(oos.avgR)} on data you hadn't seen, and this window had enough trades
+           (${oos.scored}) to say so. The development result was a description of the past, not
+           a system. That is a genuinely useful thing to find out for free.`
+        : `🤔 <strong>It faded.</strong> ${rTxt(is.avgR)} in development became ${rTxt(oos.avgR)}
+           out of sample — still positive, but a good part of the development edge was specific
+           to that stretch of history. Size accordingly, and don't trust the bigger number.`;
 
   const cmp = (label, a, b, fmt) => `
     <tr><td>${label}</td><td>${fmt(a)}</td><td>${fmt(b)}</td></tr>`;
@@ -1935,9 +1960,9 @@ function holdoutPanel(r) {
         <span class="not-advice" data-tip="These trades were simulated on data excluded from everything you used to develop the rules.">Out of sample</span>
       </div>
       <div class="journal-insight ${verdictCls}" style="margin-top:0">${verdict}
-        ${oos.scored < 20 ? `<br><br><strong>Caveat:</strong> only ${oos.scored} trades out of
-          sample. Treat this as a smell test, not a verdict — one more symbol either way could
-          flip it.` : ''}
+        ${oos.scored < 20 && !cantTell ? `<br><br><strong>Caveat:</strong> only ${oos.scored}
+          trades out of sample. Treat this as a smell test, not a verdict — one more symbol
+          either way could flip it.` : ''}
         ${reveals > 1 ? `<br><br><strong>⚠️ Look #${reveals}.</strong> This window has been
           unsealed before. If you changed the rules in between, it is no longer an out-of-sample
           test — it has quietly become part of your development data.` : ''}

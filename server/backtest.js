@@ -149,6 +149,10 @@ export function runSequence(symbol, bars, opts = {}) {
 const MIN_SEGMENT = 20;
 
 const sum = (xs) => xs.reduce((a, b) => a + b, 0);
+const stdev = (xs) => {
+  const m = sum(xs) / xs.length;
+  return Math.sqrt(sum(xs.map((x) => (x - m) ** 2)) / (xs.length - 1));
+};
 const round = (n, dp = 2) => (n == null ? null : Number(n.toFixed(dp)));
 
 // Summarise any set of trades. Used for the headline and for every segment,
@@ -188,6 +192,13 @@ export function summarise(trades) {
     losses: losses.length,
     winRate: wins.length / scored.length,
     avgR: round(sum(rs) / rs.length),
+    // Spread and standard error, so a caller can ask whether a difference
+    // between two sets of trades is bigger than the noise in them. Without
+    // this a 24-trade window gets compared to an 89-trade one as if both
+    // numbers were equally solid, which is how a small sample gets mistaken
+    // for a verdict.
+    sdR: rs.length > 1 ? round(stdev(rs), 3) : null,
+    seR: rs.length > 1 ? round(stdev(rs) / Math.sqrt(rs.length), 3) : null,
     totalR: round(sum(rs)),
     avgWinR: wins.length ? round(grossWin / wins.length) : null,
     avgLossR: losses.length ? round(-grossLoss / losses.length) : null,
