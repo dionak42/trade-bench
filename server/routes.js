@@ -166,6 +166,7 @@ router.post('/backtest', wrap(async (req, res) => {
     stopAtrMult: Number(body.stopAtrMult) || 2,
     maxWaitBars: Math.min(Math.max(Number(body.maxWaitBars) || 20, 1), 120),
     requireAbove200: body.requireAbove200 === true,
+    maxHoldBars: Math.min(Math.max(Number(body.maxHoldBars) || 0, 0), 500),
   };
   const result = await runBacktest(symbols, params);
 

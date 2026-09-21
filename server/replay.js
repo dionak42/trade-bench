@@ -98,6 +98,7 @@ export async function runReplay(symbol, opts = {}, fetchBars = getDailyBars) {
     capital = 0,
     stopAtrMult = 2,
     entryStyle = 'pullback',
+    maxHoldBars = 0, // optional clock on the position; 0 = none, as in the backtest
   } = opts;
   if (!startDate) throw new Error('A start date is required.');
 
@@ -169,6 +170,10 @@ export async function runReplay(symbol, opts = {}, fetchBars = getDailyBars) {
     if (b.h >= target) {
       const px = b.o > target ? b.o : target; // gap-up fills better
       return finish('target', px, i);
+    }
+    // Last, so stop and target still win on a bar where both could fire.
+    if (maxHoldBars > 0 && i - entryIdx >= maxHoldBars) {
+      return finish('time', b.c, i);
     }
   }
   const res = finish('open', window[window.length - 1].c, window.length - 1);

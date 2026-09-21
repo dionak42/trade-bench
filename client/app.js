@@ -22,6 +22,7 @@ const state = {
   planThesis: '',    // survives plan-builder re-renders
   backtestSymbols: '', backtestYears: 5, backtestWait: 20,
   backtestValidation: 12, backtestHoldout: 12, backtestAbove200: false,
+  backtestMaxHold: 0,
   backtestStyle: 'pullback', backtestResult: null,
   entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
@@ -1366,6 +1367,7 @@ const OUTCOME_META = {
   target: { icon: '🎯', label: 'Target hit', cls: 'good' },
   stopped: { icon: '🛑', label: 'Stopped out', cls: 'bad' },
   manual: { icon: '✋', label: 'Closed by hand', cls: '' },
+  time: { icon: '⏱', label: 'Time stop', cls: '' },
   no_fill: { icon: '⚪', label: 'Never filled', cls: 'muted' },
 };
 
@@ -1461,6 +1463,7 @@ function journalReviewForm(t) {
             ${opt('target', '🎯 Target hit', t.outcome)}
             ${opt('stopped', '🛑 Stopped out', t.outcome)}
             ${opt('manual', '✋ Closed by hand', t.outcome)}
+            ${opt('time', '⏱ Time stop — held too long', t.outcome)}
             ${opt('no_fill', '⚪ Never filled', t.outcome)}
           </select></div>
         <div class="field"><label>Fill price</label>
@@ -1623,6 +1626,7 @@ function renderBacktestControls() {
       ${field('bt-account', 'Account size ($)', state.settings.accountSize || 60000, 'Only affects share counts and dollar P&L. Results in R are unaffected by it.')}
       ${field('bt-risk', 'Risk per trade (%)', state.settings.riskPct || 0.5, "Your system's sizing rule.")}
       ${field('bt-wait', 'Days to leave an order resting', state.backtestWait || 20, 'How long a buy order waits before the level it was based on is stale and gets re-derived. A rule the plan builder never made you state — the backtest forces the question.')}
+      ${field('bt-maxhold', 'Time stop — days to hold (0 = none)', state.backtestMaxHold ?? 0, 'An optional clock on an open position. 0 is the system as written: you exit only at the target or the stop, however long that takes. A clock frees up cash from dead trades, but it can also cut short the few long winners that pay for all the losers — run it both ways and let the numbers decide.')}
       ${field('bt-validation', 'Validation window (months)', state.backtestValidation ?? 12, 'A middle slice you can check changes against as often as you like. Set to 0 if you would rather keep all the older data for development.')}
       ${field('bt-holdout', 'Months held back (out-of-sample)', state.backtestHoldout ?? 12, 'The most recent N months are locked away and excluded from everything shown. You develop on the older data; the held-back slice is the only honest test of whether the rules work on prices you never studied. Set to 0 to disable — but then nothing here can tell you the system works.')}
     </div>
@@ -1656,6 +1660,7 @@ async function runBacktestUI(reveal = false) {
   state.backtestWait = val('bt-wait');
   state.backtestHoldout = val('bt-holdout');
   state.backtestValidation = val('bt-validation');
+  state.backtestMaxHold = val('bt-maxhold');
   const btn = $('#bt-run');
   btn.disabled = true;
   btn.textContent = 'Running…';
@@ -1675,6 +1680,7 @@ async function runBacktestUI(reveal = false) {
         validationMonths: val('bt-validation'),
         entryStyle: state.backtestStyle || 'pullback',
         requireAbove200: state.backtestAbove200 === true,
+        maxHoldBars: val('bt-maxhold'),
         reveal,
       }),
     });
@@ -2115,7 +2121,10 @@ function segmentTable(title, rows, keyLabel) {
 function tradesTable(trades) {
   const rows = trades.map((t) => {
     const cls = t.rMultiple == null ? '' : t.rMultiple > 0 ? 'good' : 'bad';
-    const icon = t.outcome === 'target' ? '🎯' : t.outcome === 'stopped' ? '🛑' : '⏳';
+    const icon = t.outcome === 'target' ? '🎯'
+      : t.outcome === 'stopped' ? '🛑'
+      : t.outcome === 'time' ? '⏱'
+      : '⏳';
     return `<tr>
       <td>${esc(t.symbol)}</td>
       <td>${esc(t.entryDate)}</td>

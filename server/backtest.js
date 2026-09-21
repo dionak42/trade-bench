@@ -29,6 +29,12 @@ export function runSequence(symbol, bars, opts = {}) {
     // through while price has already fallen below both averages. Turning this
     // on additionally requires price above the 200-day at the decision bar.
     requireAbove200 = false,
+    // Optional clock on an open position: 0 means none, which is the system as
+    // written. A trend system earns most of its money from a few trades that
+    // take months, so a short clock can decapitate the winners that pay for
+    // everything else — but dead positions also tie up cash that has nowhere
+    // else to go. Which effect dominates is a question for the data.
+    maxHoldBars = 0,
     // Don't start trading until enough history exists for every input the
     // system uses — including the 200-day average behind the regime filter.
     // Trading before then would quietly test a different, filterless system.
@@ -92,6 +98,11 @@ export function runSequence(symbol, bars, opts = {}) {
       if (b.h >= lv.target) {
         exitPrice = b.o > lv.target ? b.o : lv.target; // gap up fills better
         exitIdx = j; outcome = 'target'; break;
+      }
+      // Checked last, so a stop or target reached on the same bar still wins:
+      // the clock only fires on a bar where nothing else did.
+      if (maxHoldBars > 0 && j - entryIdx >= maxHoldBars) {
+        exitPrice = b.c; exitIdx = j; outcome = 'time'; break;
       }
     }
     if (exitIdx < 0) { // still open at the end of the data — mark to last close
