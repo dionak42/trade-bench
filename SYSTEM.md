@@ -18,7 +18,9 @@ those ideas get held to — when they disagree, this one wins.
 
 **1. What I trade**
 **Common stock only.** Long positions, no options, no shorting.
-Only symbols in my Trade Bench watchlist — the holdings in my Roth. I do not
+Only symbols in my Trade Bench watchlist — the holdings in my Roth. **The system
+does not touch my other accounts**, and I don't add a name here just because I
+own it somewhere else (see the wash-sale note below). I do not
 trade tickers I heard about somewhere. Adding a name to the watchlist is a
 separate, deliberate decision made outside market hours, never in the moment.
 
@@ -141,6 +143,25 @@ Worth re-reading whenever 0.5% feels too small.
 - **Gains are untaxed.** Genuinely favourable: taking a profit here costs
   nothing in tax, so I never hold a winner past my target for tax reasons. The
   target is the target.
+- **A loss harvested elsewhere can be destroyed by a buy in here.** If I sell a
+  stock at a loss in a taxable account and buy the same stock in the Roth within
+  30 days either side, it's a wash sale — and because the replacement sits in an
+  IRA, the loss is disallowed *permanently*. There's no basis to adjust, so
+  unlike an ordinary wash sale I never get it back (IRS Rev. Rul. 2008-5). It
+  applies across accounts and across spouses, and the broker may not flag it
+  because the accounts aren't linked for reporting.
+
+  This is dangerous here specifically because **the system fires buy signals
+  mechanically** — it can trigger a wash sale without me ever making a decision.
+  So: before harvesting a loss in a taxable account, check whether that ticker is
+  in this watchlist. If it is, either don't harvest it or pause the name here for
+  the 61-day window. Confirm the details with my tax person; the mechanic is
+  well established but the edges are not my expertise.
+
+- **The risk rule protects this account, not my net worth.** 0.5% of the Roth is
+  0.5% of the Roth. If I hold the same name in other accounts, my real exposure
+  to it is larger than this system can see.
+
 - **It's a cash account — no margin.** Proceeds settle T+1, and buying with
   unsettled cash risks a good-faith violation. So I don't sell a position and
   immediately rebuy, and I keep enough settled cash that a fill never depends on
@@ -202,6 +223,10 @@ These are the numbers I made up. In priority order, once 30 reps exist:
 ## Change log
 
 - **2026-09-20** — v1 written. Nothing tested yet; every number is a starting guess.
+- **2026-09-21** — v1.5: recorded that the system is Roth-only and why —
+  cross-account wash sales, where a loss harvested in a taxable account is
+  permanently destroyed by a mechanical buy in here, and the fact that the risk
+  rule can't see holdings in other accounts.
 - **2026-09-20** — v1.4: three windows instead of two. Added a validation
   window to iterate against, and corrected v1.3's overstatement — adjusting the
   rules is the expected activity, and the held-out window refills as time
