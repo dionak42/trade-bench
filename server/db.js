@@ -364,6 +364,7 @@ export function variantSignature(params = {}) {
     entryStyle: params.entryStyle ?? 'pullback',
     stopAtrMult: Number(params.stopAtrMult ?? 2),
     maxWaitBars: Number(params.maxWaitBars ?? 20),
+    requireAbove200: params.requireAbove200 === true,
     years: Number(params.years ?? 3),
     splitDate: params.splitDate ?? null,
     validationDate: params.validationDate ?? null,

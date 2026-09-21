@@ -52,6 +52,13 @@ export function deriveLevels(bars, idx, { stopAtrMult = 2, entryStyle = 'pullbac
   const sma50 = smaAt(50), sma200 = smaAt(200);
   const regime = sma50 != null && sma200 != null ? (sma50 >= sma200 ? 'golden' : 'death') : null;
 
+  // Regime and price-vs-200-day are different questions, and a name can pass
+  // one while failing the other: the 50 can still sit above the 200 while price
+  // has already dropped below both. Recorded separately so the backtest can say
+  // whether that distinction is worth money.
+  const lastClose = closes.length ? closes[closes.length - 1] : null;
+  const aboveSma200 = lastClose != null && sma200 != null ? lastClose > sma200 : null;
+
   return {
     entry: Number(entry.toFixed(2)),
     target: Number(target.toFixed(2)),
@@ -60,6 +67,9 @@ export function deriveLevels(bars, idx, { stopAtrMult = 2, entryStyle = 'pullbac
     support,
     resistance,
     regime,
+    aboveSma200,
+    sma200: sma200 != null ? Number(sma200.toFixed(2)) : null,
+    lastClose,
     breakout,
     riskPerShare: entry - stop,
     asOf: bars[idx].t.slice(0, 10),

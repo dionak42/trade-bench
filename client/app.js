@@ -21,7 +21,7 @@ const state = {
   journalOpen: new Set(), // ids of expanded review forms
   planThesis: '',    // survives plan-builder re-renders
   backtestSymbols: '', backtestYears: 5, backtestWait: 20,
-  backtestValidation: 12, backtestHoldout: 12,
+  backtestValidation: 12, backtestHoldout: 12, backtestAbove200: false,
   backtestStyle: 'pullback', backtestResult: null,
   entryStyle: 'pullback', // 'pullback' | 'breakout'
   settings: {},      // { accountSize, riskPct } cached from /settings
@@ -1608,6 +1608,12 @@ function renderBacktestControls() {
       <button class="active" data-style="pullback" type="button">Pullback · buy support</button>
       <button data-style="breakout" type="button">Breakout · buy resistance</button>
     </div>
+    <div class="toggle plan-mode" id="bt-filter-toggle" role="tablist">
+      <button class="${state.backtestAbove200 ? '' : 'active'}" data-above="0" type="button"
+        data-tip="Rule 2 as written: the 50-day above the 200-day is enough. This lets a name through even when price has already dropped below both averages.">Regime only</button>
+      <button class="${state.backtestAbove200 ? 'active' : ''}" data-above="1" type="button"
+        data-tip="The stricter reading: the regime filter AND price above the 200-day at the moment of the decision. Fewer trades, and it never buys a name that has already broken down.">Regime + above 200-day</button>
+    </div>
     <div class="field">
       <label><span class="q" data-tip="Comma-separated tickers. Defaults to your watchlist — the universe your system actually trades. Up to 25.">Symbols</span></label>
       <textarea id="bt-symbols" rows="2" placeholder="AAPL, MSFT, COST">${esc(symbols)}</textarea>
@@ -1628,6 +1634,12 @@ function renderBacktestControls() {
       $('#bt-style-toggle').querySelectorAll('button').forEach((x) => x.classList.remove('active'));
       b.classList.add('active');
       state.backtestStyle = b.dataset.style;
+    }));
+  $('#bt-filter-toggle').querySelectorAll('button').forEach((b) =>
+    b.addEventListener('click', () => {
+      $('#bt-filter-toggle').querySelectorAll('button').forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      state.backtestAbove200 = b.dataset.above === '1';
     }));
   // Wrapped, not passed directly: a bare listener would hand the click Event
   // in as `reveal`, which is truthy — silently unsealing the held-out period
@@ -1662,6 +1674,7 @@ async function runBacktestUI(reveal = false) {
         holdoutMonths: val('bt-holdout'),
         validationMonths: val('bt-validation'),
         entryStyle: state.backtestStyle || 'pullback',
+        requireAbove200: state.backtestAbove200 === true,
         reveal,
       }),
     });
@@ -1737,6 +1750,7 @@ function renderBacktestResult(r) {
       ${segmentTable('By symbol', r.bySymbol, 'Symbol')}
       ${segmentTable('By year', r.byYear, 'Year')}
       ${segmentTable('By regime at entry', r.byRegime, 'Regime')}
+      ${segmentTable('By price vs the 200-day at entry', r.byAbove200, 'Price')}
       ${concentrationNote(r)}
     </section>
     <section class="card">
@@ -2006,6 +2020,26 @@ function verdictBox(r) {
     body = `The wins were not big enough to cover the losses. Before changing anything, check the
       segments below — it may be one symbol or one year doing the damage.`;
   }
+  // The stricter reading of rule 2, answered from one run rather than two.
+  const av = r.above200Verdict;
+  let above200Line = '';
+  if (r.params?.requireAbove200) {
+    above200Line = `<li><strong>Running with the stricter rule 2</strong> — regime filter plus
+      price above the 200-day. Compare this expectancy against a "Regime only" run to see what
+      the extra condition bought you.</li>`;
+  } else if (av) {
+    above200Line = av.helps
+      ? `<li><strong>Price above the 200-day was worth having.</strong> Trades taken with price
+         above it averaged <strong>${rTxt(av.aboveAvgR)}</strong> (${av.aboveTrades}) against
+         <strong>${rTxt(av.belowAvgR)}</strong> below it (${av.belowTrades}) — ${rTxt(av.edge)}
+         per trade. Worth tightening rule 2 and re-running with the filter on.</li>`
+      : `<li><strong>Price above the 200-day did not help here.</strong> Above it averaged
+         <strong>${rTxt(av.aboveAvgR)}</strong> (${av.aboveTrades}), below it
+         <strong>${rTxt(av.belowAvgR)}</strong> (${av.belowTrades}). On this sample the stricter
+         rule 2 would have cost you setups without buying safety — buying the dip below the
+         200-day was where the money was.</li>`;
+  }
+
   return `
     <div class="journal-insight ${works ? 'good-box' : 'warn-box'}">
       <strong>${headline}</strong>
@@ -2013,6 +2047,7 @@ function verdictBox(r) {
       ${body}
       <ul style="margin:8px 0 0 18px;padding:0">
         ${filterLine}
+        ${above200Line}
         ${thin ? `<li><strong>${o.scored} trades is a thin sample.</strong> Anything under about
           30 is closer to a rumour than a result — widen the symbol list or the years before
           you trust it.</li>` : ''}
